@@ -1,4 +1,4 @@
-# BACKLOG — VTB Pulse Prototype
+# BACKLOG — VTB Vita Prototype
 
 **Дедлайн Phase 1:** 5 апреля 2026
 **Дедлайн Phase 2:** 12 апреля 2026

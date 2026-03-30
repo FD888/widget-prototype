@@ -1,8 +1,8 @@
-# VTB Pulse — Прототип виджета
+# VTB Vita — Прототип виджета
 
 ## Что здесь строится
 
-**VTB Pulse** — голосовой/текстовый виджет на главном экране Android.
+**VTB Vita** — голосовой/текстовый виджет на главном экране Android.
 Одна фраза → перевод / баланс / пополнение телефона — без открытия приложения.
 
 Этот репозиторий — **standalone Android-прототип** для демонстрации на защите 19 апреля 2026.
@@ -99,6 +99,6 @@ README.md    — обзор для людей
 ## Как ориентироваться в коде
 
 - Точка входа Android-приложения: `android/app/src/main/`
-- Виджет-провайдер: ищи `PulseWidgetProvider` (AppWidgetProvider)
+- Виджет-провайдер: ищи `VitaWidgetProvider` (AppWidgetProvider)
 - NLP-сервис: `ml/` — FastAPI-приложение, endpoint `POST /parse`
 - Mock-данные: `android/app/src/main/assets/mock/` или аналог

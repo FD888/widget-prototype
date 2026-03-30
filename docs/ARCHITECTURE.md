@@ -1,4 +1,4 @@
-# Архитектура VTB Pulse — Прототип
+# Архитектура VTB Vita — Прототип
 
 > **Принцип документа:**
 > - **Текущее состояние** — только то, что реально есть в репозитории прямо сейчас. Обновляется автоматически при каждом коммите через `/commit`.
@@ -64,10 +64,10 @@ widget-prototype/
 │  Android Device                                          │
 │                                                          │
 │  ┌─────────────────────────────────────────────────────┐│
-│  │ VTB Pulse App (наш APK)                             ││
+│  │ VTB Vita App (наш APK)                             ││
 │  │                                                      ││
 │  │  ┌──────────────────┐   ┌──────────────────────┐   ││
-│  │  │  PulseWidget     │   │  ConfirmActivity      │   ││
+│  │  │  VitaWidget     │   │  ConfirmActivity      │   ││
 │  │  │  (AppWidget UI)  │──▶│  (модал подтверждения)│   ││
 │  │  │  Kotlin/Compose  │   │  Kotlin/Compose       │   ││
 │  │  └────────┬─────────┘   └──────────────────────┘   ││
@@ -90,15 +90,15 @@ widget-prototype/
 ### Целевая структура Android-приложения
 
 ```
-android/app/src/main/java/com/vtbpulse/
+android/app/src/main/java/com/vtbvita/
 ├── widget/
-│   ├── PulseWidgetProvider.kt   ← AppWidgetProvider
-│   └── PulseWidgetUpdater.kt    ← логика обновления RemoteViews
+│   ├── VitaWidgetProvider.kt   ← AppWidgetProvider
+│   └── VitaWidgetUpdater.kt    ← логика обновления RemoteViews
 ├── ui/
 │   ├── ConfirmActivity.kt       ← модал подтверждения
 │   └── InputActivity.kt         ← экран ввода команды
 ├── api/
-│   ├── PulseApiClient.kt        ← HTTP-клиент → NLP-сервис
+│   ├── VitaApiClient.kt        ← HTTP-клиент → NLP-сервис
 │   └── MockData.kt              ← fallback mock-данные
 └── model/
     ├── Intent.kt
