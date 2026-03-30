@@ -1,0 +1,43 @@
+# Android / Gradle
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# Kotlin
+*.class
+
+# Python / ML
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+.pytest_cache/
+.mypy_cache/
+*.log
+
+# Secrets (никогда в репо)
+local.properties
+*.env
+.env*
+secrets.properties
+
+# Editor
+*.swp
+*.kate-swp
+.vscode/
+*.sublime-project
+*.sublime-workspace
