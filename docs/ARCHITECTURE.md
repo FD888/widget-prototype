@@ -37,7 +37,9 @@ widget-prototype/
 
 | Дата | Решение | Причина |
 |------|---------|---------|
-| 2026-03-30 | Стек: Android (Kotlin + AppWidget API) + Python (FastAPI) | Принято в BACKLOG.md, финализация на C-01 |
+| 2026-03-30 | Android виджет: Kotlin + AppWidget API (RemoteViews) | RemoteViews стабильнее Glance, больше документации, Glance конвертируется в RemoteViews под капотом — лишний слой багов |
+| 2026-03-30 | Ввод текста: тап по виджету → InputActivity → результат в виджет | EditText в AppWidget запрещён Android OS — оба подхода (Glance и RemoteViews) имеют это ограничение |
+| 2026-03-30 | NLP: LLM API (prompt → JSON) вместо кастомного парсера | Быстрее, надёжнее для демо, конкретный провайдер TBD |
 | 2026-03-30 | Mock-данные: JSON-файлы или хардкод, без реального API | Критическое ограничение (безопасность/демо) |
 
 ---
@@ -92,7 +94,7 @@ widget-prototype/
 ```
 android/app/src/main/java/com/vtbvita/
 ├── widget/
-│   ├── VitaWidgetProvider.kt   ← AppWidgetProvider
+│   ├── VitaWidgetProvider.kt   ← AppWidgetProvider (RemoteViews)
 │   └── VitaWidgetUpdater.kt    ← логика обновления RemoteViews
 ├── ui/
 │   ├── ConfirmActivity.kt       ← модал подтверждения
