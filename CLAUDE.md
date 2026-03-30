@@ -20,7 +20,7 @@
 | Компонент | Технология | Владелец |
 |-----------|-----------|---------|
 | Android Widget + UI | Kotlin + AppWidget API (RemoteViews) | Денис |
-| NLP / Intent Parser | Python (FastAPI) + LLM API (prompt → JSON) | Яна |
+| NLP / Intent Parser | Python (FastAPI) + DeepSeek API (прототип) / self-hosted (продакшен ВТБ) | Яна |
 | Mock Backend | часть Android-приложения или отдельный сервис | Денис + Яна |
 
 > Стек фиксируется в задаче **C-01**. До её закрытия таблица выше — предложение, не факт.
