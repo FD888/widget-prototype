@@ -19,8 +19,8 @@
 
 | Компонент | Технология | Владелец |
 |-----------|-----------|---------|
-| Android Widget + UI | Kotlin + Jetpack Compose + AppWidget API | Денис |
-| NLP / Intent Parser | Python (FastAPI) | Яна |
+| Android Widget + UI | Kotlin + AppWidget API (RemoteViews) | Денис |
+| NLP / Intent Parser | Python (FastAPI) + DeepSeek API (прототип) / self-hosted (продакшен ВТБ) | Яна |
 | Mock Backend | часть Android-приложения или отдельный сервис | Денис + Яна |
 
 > Стек фиксируется в задаче **C-01**. До её закрытия таблица выше — предложение, не факт.
@@ -99,6 +99,6 @@ README.md    — обзор для людей
 ## Как ориентироваться в коде
 
 - Точка входа Android-приложения: `android/app/src/main/`
-- Виджет-провайдер: ищи `PulseWidgetProvider` (AppWidgetProvider)
+- Виджет-провайдер: ищи `VitaWidgetProvider` (AppWidgetProvider)
 - NLP-сервис: `ml/` — FastAPI-приложение, endpoint `POST /parse`
 - Mock-данные: `android/app/src/main/assets/mock/` или аналог
