@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-02*
+*Последнее обновление: 2026-04-03*
 
 ### Структура репозитория
 
@@ -29,6 +29,8 @@ widget-prototype/
 │       │   ├── MainActivity.kt             ← выбор профиля (PERSONAS)
 │       │   ├── PinEntryActivity.kt         ← PIN-экран (4 цифры)
 │       │   ├── MockBankActivity.kt         ← mock банковское приложение
+│       │   ├── BankingSession.kt           ← in-memory banking JWT (15 мин)
+│       │   ├── PhoneVerificationActivity.kt← верификация номера телефона
 │       │   ├── api/MockApiService.kt       ← HTTP-клиент к FastAPI
 │       │   ├── nlp/NlpService.kt           ← обёртка NLP
 │       │   ├── model/Models.kt             ← data-классы
@@ -42,14 +44,14 @@ widget-prototype/
 │       └── AndroidManifest.xml
 ├── ml/
 │   └── mock_api/
-│       ├── main.py     ← FastAPI: /parse, /balance, /command, /confirm
+│       ├── main.py     ← FastAPI: /verify-phone, /auth, /parse, /balance, /command, /confirm
 │       ├── data.py     ← mock-данные (баланс, контакты, счета)
 │       └── venv/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRODUCT.md
 │   └── REQUIREMENTS.md
-├── .claude/commands/
+├── .claude/skills/           ← model-invoked skills (commit, deploy, plan)
 ├── BACKLOG.md
 ├── CLAUDE.md
 └── README.md
@@ -67,6 +69,9 @@ widget-prototype/
 | Перевод (2 шага) | `TransferDetailsActivity.kt` | ✅ |
 | Пополнение телефона | `TopupInputActivity.kt` | ✅ |
 | Баланс | `BalanceActivity.kt` | ✅ |
+| Верификация телефона | `PhoneVerificationActivity.kt` | ✅ |
+| In-memory banking JWT | `BankingSession.kt` | ✅ |
+| Inline PIN overlay (виджет) | `InputActivity.kt` | ✅ |
 | Сессия (login/logout) | `SessionManager.kt` | ✅ |
 | Выбор профиля | `MainActivity.kt` | ✅ |
 | PIN-вход | `PinEntryActivity.kt` | ✅ |
@@ -87,6 +92,9 @@ widget-prototype/
 | 2026-03-31 | hideWidget в onCreate, restoreWidget в onPause | onDestroy ненадёжен |
 | 2026-04-01 | SessionManager (SharedPreferences) | Персонализация виджета + контроль доступа |
 | 2026-04-02 | adb reverse tcp:8000 tcp:8000 для USB-тоннеля | Mock API недоступен с устройства без тоннеля |
+| 2026-04-03 | Двухуровневая JWT-авторизация: app_token (30д) + banking_token (15мин) | PIN хранится только на сервере; banking_token живёт только в памяти (BankingSession) |
+| 2026-04-03 | BankingSession.clear() в InputActivity.onPause() | Каждый выход из виджета требует повторного ввода PIN |
+| 2026-04-03 | MainActivity роутинг: если persona сохранена → PinEntryActivity напрямую | Не нужно заново выбирать профиль после перезапуска приложения |
 
 ---
 
@@ -100,7 +108,8 @@ widget-prototype/
 | NLP | NLP/Chatbot Service ВТБ (gRPC) | FastAPI-сервис (`ml/mock_api/`) |
 | Core Banking API | Внутренний REST ВТБ | Mock-данные (data.py) |
 | Биометрия | Android BiometricPrompt | UI-заглушка — кнопка «Подтвердить» |
-| JWT-сессия | Сессия VTB Online App | SharedPreferences (SessionManager) |
+| JWT-сессия (app) | Сессия VTB Online App | SharedPreferences (app_token, 30д) |
+| JWT-сессия (banking) | Banking API session | In-memory BankingSession (15мин) |
 | Контакты | Серверная адресная книга | Android ContactsContract (реальная книга) |
 | Push/FCM | Firebase → VTB Platform | Не реализовано |
 

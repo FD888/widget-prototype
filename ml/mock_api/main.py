@@ -9,12 +9,33 @@ Flow (balance):
   Widget → [Biometric/PIN on Android] → GET /balance → показать данные (без confirm)
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Literal
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from jose import jwt, JWTError
+from dotenv import load_dotenv
 import uuid
+import os
+import re
+
+load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Config from environment
+# ---------------------------------------------------------------------------
+
+APP_API_KEY     = os.getenv("APP_API_KEY", "vita_demo_2026")
+JWT_SECRET      = os.getenv("JWT_SECRET", "dev_secret_change_in_production")
+JWT_EXPIRE_MIN  = int(os.getenv("JWT_EXPIRE_MINUTES", "15"))
+
+def _normalize_phone_cfg(phone: str) -> str:
+    """Нормализует номер из .env для сравнения: +79186087207 → 79186087207"""
+    return re.sub(r"\D", "", phone)
+
+ALLOWED_PHONES = {_normalize_phone_cfg(p) for p in os.getenv("ALLOWED_PHONES", "").split(",") if p.strip()}
+ALLOWED_PIN    = os.getenv("ALLOWED_PIN", "1234")  # fallback для локальной разработки
 
 app = FastAPI(title="VTB Vita Mock API", version="1.0.0")
 
@@ -24,6 +45,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+def _normalize_phone(phone: str) -> str:
+    """Приводит номер к формату 7XXXXXXXXXX для сравнения."""
+    digits = "".join(c for c in phone if c.isdigit())
+    if len(digits) == 11 and digits[0] in ("7", "8"):
+        return "7" + digits[1:]
+    if len(digits) == 10:
+        return "7" + digits
+    return digits
+
+
+def _check_app_token(x_api_key: str = Header(..., alias="X-Api-Key")):
+    """
+    Проверяет X-Api-Key заголовок.
+    Принимает:
+      1. Статический APP_API_KEY — для локальной разработки (adb tunnel).
+      2. JWT app_token — выдаётся после верификации номера телефона (/verify-phone).
+    """
+    if x_api_key == APP_API_KEY:
+        return  # локальная разработка
+
+    try:
+        payload = jwt.decode(x_api_key, JWT_SECRET, algorithms=["HS256"])
+        if payload.get("type") != "app_access":
+            raise HTTPException(status_code=403, detail="Invalid token type")
+    except JWTError:
+        raise HTTPException(status_code=403, detail="Invalid or expired token")
+
+
+def _check_banking_token(x_banking_token: str = Header(..., alias="X-Banking-Token")):
+    """Проверяет X-Banking-Token — выдаётся после валидации PIN через /auth."""
+    try:
+        payload = jwt.decode(x_banking_token, JWT_SECRET, algorithms=["HS256"])
+        if payload.get("type") != "banking_access":
+            raise HTTPException(status_code=403, detail="Invalid token type")
+    except JWTError:
+        raise HTTPException(status_code=403, detail="Invalid or expired banking token")
 
 # ---------------------------------------------------------------------------
 # Mock data
@@ -98,15 +160,6 @@ _pending: dict[str, dict] = {}
 # ---------------------------------------------------------------------------
 
 _PHONE_INDEX: dict[str, str] = {}
-
-def _normalize_phone(phone: str) -> str:
-    """Приводит номер к формату 7XXXXXXXXXX для сравнения."""
-    digits = "".join(c for c in phone if c.isdigit())
-    if len(digits) == 11 and digits[0] in ("7", "8"):
-        return "7" + digits[1:]
-    if len(digits) == 10:
-        return "7" + digits
-    return digits
 
 def _format_phone(phone: str) -> str:
     """Форматирует номер для отображения: +7 (926) 111-22-33"""
@@ -243,13 +296,157 @@ class OperationResult(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
+PARSE_SYSTEM_PROMPT = """
+Ты — парсер команд для банковского виджета ВТБ Vita.
+Извлеки намерение пользователя и параметры. Верни ТОЛЬКО валидный JSON без markdown и пояснений.
+
+Возможные intents:
+- transfer   : перевести деньги (recipient, amount)
+- balance    : проверить баланс
+- topup      : пополнить телефон (phone, amount)
+- open_app   : открыть приложение (app)
+- alarm      : поставить будильник (hour 0-23, minute 0-59)
+- timer      : запустить таймер (duration_seconds)
+- call       : позвонить (contact)
+- unknown    : непонятная команда
+
+Известные значения app: telegram, whatsapp, vk, youtube, spotify,
+  yandex_maps, yandex_music, instagram, tiktok, vtb, sber, tinkoff
+
+Формат ответа (все поля обязательны, неизвестные = null):
+{
+  "intent": "...",
+  "recipient": null,
+  "amount": null,
+  "phone": null,
+  "app": null,
+  "hour": null,
+  "minute": null,
+  "duration_seconds": null,
+  "contact": null,
+  "confidence": 0.9
+}
+""".strip()
+
+
+class ParseRequest(BaseModel):
+    text: str
+
+
+class ParseResult(BaseModel):
+    intent: str
+    recipient: Optional[str] = None
+    amount: Optional[float] = None
+    phone: Optional[str] = None
+    app: Optional[str] = None
+    hour: Optional[int] = None
+    minute: Optional[int] = None
+    duration_seconds: Optional[int] = None
+    contact: Optional[str] = None
+    confidence: float = 0.9
+
+
+@app.post("/parse", response_model=ParseResult)
+async def parse_command(req: ParseRequest):
+    """
+    Принимает свободный текст → DeepSeek парсит → возвращает структурированный intent.
+    Не требует JWT (только APP_API_KEY) — парсинг не касается банковских данных.
+    """
+    import httpx, json as _json
+
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="DEEPSEEK_API_KEY не задан")
+
+    payload = {
+        "model": "deepseek/deepseek-chat",
+        "messages": [
+            {"role": "system", "content": PARSE_SYSTEM_PROMPT},
+            {"role": "user",   "content": req.text},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 256,
+        "response_format": {"type": "json_object"},
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"OpenRouter error: {resp.text}")
+
+    try:
+        content = resp.json()["choices"][0]["message"]["content"]
+        data = _json.loads(content)
+        return ParseResult(**{k: data.get(k) for k in ParseResult.model_fields})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Parse error: {e}")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "vtb-vita-mock-api"}
 
 
+class AuthRequest(BaseModel):
+    pin: str
+
+class AuthResponse(BaseModel):
+    banking_token: str
+    expires_in_seconds: int
+
+@app.post("/auth", response_model=AuthResponse)
+def auth(req: AuthRequest, _: None = Depends(_check_app_token)):
+    """
+    Валидирует PIN → возвращает banking JWT (15 мин, только в памяти на клиенте).
+    Требует X-Api-Key (app_token) — чтобы только верифицированные устройства могли войти.
+    """
+    if not ALLOWED_PIN or req.pin != ALLOWED_PIN:
+        raise HTTPException(status_code=403, detail="Неверный PIN")
+    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MIN)
+    token = jwt.encode(
+        {"type": "banking_access", "exp": expire},
+        JWT_SECRET, algorithm="HS256"
+    )
+    return AuthResponse(banking_token=token, expires_in_seconds=JWT_EXPIRE_MIN * 60)
+
+
+class PhoneVerifyRequest(BaseModel):
+    phone: str
+
+class PhoneVerifyResponse(BaseModel):
+    app_token: str
+    expires_in_days: int = 30
+
+@app.post("/verify-phone", response_model=PhoneVerifyResponse)
+def verify_phone(req: PhoneVerifyRequest):
+    """
+    Верификация номера телефона — первый запуск приложения.
+    Не требует X-Api-Key (публичный эндпоинт).
+    Если номер в ALLOWED_PHONES → возвращает app_token (JWT, 30 дней).
+    """
+    normalized = _normalize_phone(req.phone)
+    if normalized not in ALLOWED_PHONES:
+        raise HTTPException(status_code=403, detail="Номер не найден")
+
+    expire = datetime.now(timezone.utc) + timedelta(days=30)
+    token = jwt.encode(
+        {"type": "app_access", "phone": normalized, "exp": expire},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+    return PhoneVerifyResponse(app_token=token)
+
+
 @app.get("/balance", response_model=BalanceResponse)
-def balance():
+def balance(_: None = Depends(_check_banking_token)):
     """
     Возвращает балансы всех счетов пользователя.
     Биометрия/PIN выполняется на стороне Android ДО вызова этого endpoint.
@@ -262,7 +459,7 @@ def balance():
 
 
 @app.post("/lookup", response_model=LookupResponse)
-def lookup(req: LookupRequest):
+def lookup(req: LookupRequest, _: None = Depends(_check_app_token)):
     """
     Android вызывает при ручном вводе номера в модале перевода.
     Возвращает display_name ("Мария К.") если номер найден в контактах.
@@ -281,7 +478,7 @@ def lookup(req: LookupRequest):
 
 
 @app.post("/command", response_model=ConfirmationResponse)
-def command(req: CommandRequest):
+def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
     """
     Принимает распарсенный intent transfer или topup.
     Биометрия/PIN выполняется на Android ДО вызова.
@@ -392,7 +589,7 @@ def command(req: CommandRequest):
 
 
 @app.post("/confirm/{transaction_id}", response_model=OperationResult)
-def confirm(transaction_id: str, req: ConfirmRequest):
+def confirm(transaction_id: str, req: ConfirmRequest, _: None = Depends(_check_banking_token)):
     """
     Пользователь нажал «Подтвердить» в модале.
     Выполняет операцию, списывает с выбранного счёта.

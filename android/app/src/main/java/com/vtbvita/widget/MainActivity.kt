@@ -74,9 +74,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Уже залогинен → сразу в mock-банк
+        // Телефон не верифицирован → экран верификации
+        if (!SessionManager.hasAppToken(this)) {
+            startActivity(Intent(this, PhoneVerificationActivity::class.java))
+            finish()
+            return
+        }
+
+        // Если persona сохранена — сразу PIN (banking JWT всегда запрашивается заново)
         if (SessionManager.isLoggedIn(this)) {
-            startActivity(Intent(this, MockBankActivity::class.java))
+            val personaId = SessionManager.getPersonaId(this) ?: "denis"
+            startActivity(
+                Intent(this, PinEntryActivity::class.java).apply {
+                    putExtra(PinEntryActivity.EXTRA_PERSONA_ID, personaId)
+                }
+            )
             finish()
             return
         }

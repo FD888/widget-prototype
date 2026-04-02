@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.vtbvita.widget.BankingSession
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.ConfirmationData
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
@@ -67,6 +68,7 @@ class InputActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
+        BankingSession.clear()  // каждый выход из виджета сбрасывает banking-сессию
         restoreWidget()
     }
 
@@ -101,12 +103,16 @@ class InputActivity : ComponentActivity() {
                         )
                         finish()
                     },
-                    onTransfer = {
-                        startActivity(ContactPickerActivity.newIntent(this))
+                    onTransfer = { recipient, amount ->
+                        if (recipient != null) {
+                            startActivity(TransferDetailsActivity.newIntent(this, recipient, "", amount ?: 0.0))
+                        } else {
+                            startActivity(ContactPickerActivity.newIntent(this, amount))
+                        }
                         finish()
                     },
-                    onTopup = {
-                        startActivity(TopupInputActivity.newIntent(this))
+                    onTopup = { phone, amount ->
+                        startActivity(TopupInputActivity.newIntent(this, phone ?: "", amount ?: 0.0))
                         finish()
                     },
                     onConfirm = { data ->
@@ -124,18 +130,32 @@ private fun InputOverlay(
     startInRecordingMode: Boolean,
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
-    onTransfer: () -> Unit,
-    onTopup: () -> Unit,
+    onTransfer: (String?, Double?) -> Unit,
+    onTopup: (String?, Double?) -> Unit,
     onConfirm: (ConfirmationData) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf("") }
     // Инициализируем сразу — нет мигания текстового режима при открытии через микрофон
     var isRecording by remember { mutableStateOf(startInRecordingMode) }
     var recordingSeconds by remember { mutableStateOf(0) }
     val focusRequester = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Banking PIN gate
+    var pinRequired by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    fun requirePin(action: () -> Unit) {
+        if (BankingSession.isValid()) {
+            action()
+        } else {
+            pendingAction = action
+            pinRequired = true
+        }
+    }
 
     // Запись
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
@@ -317,10 +337,18 @@ private fun InputOverlay(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = {
-                            if (text.isNotBlank() && !isLoading)
-                                submitText(text, context, scope, onDismiss, onBalance, onTransfer, onTopup, onConfirm) {
-                                    isLoading = it
-                                }
+                            if (text.isNotBlank() && !isLoading) {
+                                errorMsg = ""
+                                submitText(
+                                    text, context, scope, onDismiss,
+                                    onBalance = { requirePin(onBalance) },
+                                    onTransfer = { r, a -> requirePin { onTransfer(r, a) } },
+                                    onTopup = { p, a -> requirePin { onTopup(p, a) } },
+                                    onConfirm = onConfirm,
+                                    setLoading = { isLoading = it },
+                                    onError = { errorMsg = it }
+                                )
+                            }
                         }),
                         decorationBox = { innerTextField ->
                             if (text.isEmpty()) {
@@ -366,6 +394,17 @@ private fun InputOverlay(
                 }
             }
 
+            // ── Сообщение об ошибке ───────────────────────────────────
+            if (errorMsg.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                androidx.compose.material3.Text(
+                    text = errorMsg,
+                    color = Color(0xFFFF6B6B),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+
             // ── Чипы (только в текстовом режиме) ──────────────────────
             if (!isRecording) {
                 Spacer(Modifier.height(8.dp))
@@ -373,10 +412,29 @@ private fun InputOverlay(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { onTransfer() }
-                    QuickChip("Баланс", Modifier.weight(1f), enabled = !isLoading) { onBalance() }
-                    QuickChip("Пополнить", Modifier.weight(1f), enabled = !isLoading) { onTopup() }
+                    QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTransfer(null, null) } }
+                    QuickChip("Баланс", Modifier.weight(1f), enabled = !isLoading) { requirePin(onBalance) }
+                    QuickChip("Пополнить", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTopup(null, null) } }
                 }
+            }
+
+            // ── Inline PIN overlay ──────────────────────────────────────
+            if (pinRequired) {
+                Spacer(Modifier.height(8.dp))
+                InlinePinOverlay(
+                    scope = scope,
+                    context = context,
+                    onSuccess = { token, expiresIn ->
+                        BankingSession.save(token, expiresIn)
+                        pinRequired = false
+                        pendingAction?.invoke()
+                        pendingAction = null
+                    },
+                    onCancel = {
+                        pinRequired = false
+                        pendingAction = null
+                    }
+                )
             }
         }
     }
@@ -428,41 +486,195 @@ private fun submitText(
     scope: kotlinx.coroutines.CoroutineScope,
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
-    onTransfer: () -> Unit,
-    onTopup: () -> Unit,
+    onTransfer: (String? /* recipient */, Double? /* amount */) -> Unit,
+    onTopup: (String? /* phone */, Double? /* amount */) -> Unit,
     onConfirm: (ConfirmationData) -> Unit,
-    setLoading: (Boolean) -> Unit
+    setLoading: (Boolean) -> Unit,
+    onError: (String) -> Unit,
 ) {
-    // 1. Системные команды — будильник, таймер, приложения, звонок
-    val systemIntent = SystemIntentHandler.parse(text, context)
-    if (systemIntent != null) {
-        try {
-            context.startActivity(systemIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: Exception) {}
-        onDismiss()
-        return
+    setLoading(true)
+    scope.launch {
+        // Все команды идут на сервер — сервер решает что делать
+        val result = com.vtbvita.widget.nlp.NlpService.parse(text, context)
+
+        result.onFailure {
+            setLoading(false)
+            onError("Нет соединения, попробуй позже")
+            return@launch
+        }
+
+        val parsed = result.getOrThrow()
+        setLoading(false)
+
+        when (parsed.intent) {
+            "balance" -> onBalance()
+
+            "transfer" -> onTransfer(parsed.recipient, parsed.amount)
+
+            "topup" -> onTopup(parsed.phone, parsed.amount)
+
+            "open_app" -> {
+                val appIntent = parsed.app?.let {
+                    SystemIntentHandler.openApp(it, context)
+                }
+                if (appIntent != null) {
+                    try { context.startActivity(appIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                    catch (_: Exception) { onError("Не удалось открыть приложение") }
+                } else {
+                    onError("Приложение не найдено")
+                }
+                onDismiss()
+            }
+
+            "alarm" -> {
+                val h = parsed.hour ?: 8
+                val m = parsed.minute ?: 0
+                try {
+                    context.startActivity(
+                        SystemIntentHandler.setAlarm(h, m)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Exception) {}
+                onDismiss()
+            }
+
+            "timer" -> {
+                val secs = parsed.durationSeconds ?: 60
+                try {
+                    context.startActivity(
+                        SystemIntentHandler.setTimer(secs)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Exception) {}
+                onDismiss()
+            }
+
+            "call" -> {
+                try {
+                    context.startActivity(
+                        SystemIntentHandler.call(parsed.contact, context)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Exception) {}
+                onDismiss()
+            }
+
+            else -> onError("Не понял команду, попробуй иначе")
+        }
+    }
+}
+
+@Composable
+private fun InlinePinOverlay(
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context,
+    onSuccess: (String, Int) -> Unit,
+    onCancel: () -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    fun onDigit(d: String) {
+        if (pin.length < 4 && !isLoading) {
+            pin += d
+            if (pin.length == 4) {
+                isLoading = true
+                scope.launch {
+                    val result = MockApiService.auth(pin, context)
+                    result.fold(
+                        onSuccess = { tokenResult ->
+                            onSuccess(tokenResult.token, tokenResult.expiresInSeconds)
+                        },
+                        onFailure = {
+                            errorMsg = "Неверный PIN"
+                            delay(400)
+                            pin = ""
+                            delay(800)
+                            errorMsg = ""
+                            isLoading = false
+                        }
+                    )
+                }
+            }
+        }
     }
 
-    // 2. Банковские команды
-    when {
-        text.contains("баланс", ignoreCase = true) -> onBalance()
-        text.contains("пополн", ignoreCase = true) ||
-        text.contains("телефон", ignoreCase = true) -> onTopup()
-        text.contains("перевод", ignoreCase = true) ||
-        text.contains("переведи", ignoreCase = true) -> onTransfer()
-        else -> {
-            setLoading(true)
-            scope.launch {
-                runCatching {
-                    MockApiService.command(
-                        intent = "transfer",
-                        amount = 1000.0,
-                        recipient = "Маша",
-                        phone = null
-                    )
-                }.onSuccess { onConfirm(it) }
-                    .onFailure { setLoading(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF001A5E).copy(alpha = 0.97f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.Text(
+                "Введите PIN",
+                color = Color.White,
+                fontSize = 15.sp
+            )
+            androidx.compose.material3.Text(
+                "Отмена",
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 13.sp,
+                modifier = Modifier.clickable(onClick = onCancel)
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // 4 точки
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            repeat(4) { i ->
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .background(
+                            when {
+                                errorMsg.isNotBlank() -> Color(0xFFE57373)
+                                i < pin.length -> Color.White
+                                else -> Color.White.copy(alpha = 0.3f)
+                            },
+                            CircleShape
+                        )
+                )
             }
+        }
+
+        if (errorMsg.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            androidx.compose.material3.Text(errorMsg, fontSize = 11.sp, color = Color(0xFFE57373))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Цифровой пад (компактный)
+        val keys = listOf(
+            listOf("1", "2", "3"),
+            listOf("4", "5", "6"),
+            listOf("7", "8", "9"),
+            listOf("", "0", "⌫")
+        )
+        keys.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { key ->
+                    if (key.isEmpty()) {
+                        Spacer(Modifier.size(56.dp))
+                    } else {
+                        PinKey(label = key, size = 56.dp, enabled = !isLoading) {
+                            when (key) {
+                                "⌫" -> if (pin.isNotEmpty() && !isLoading) pin = pin.dropLast(1)
+                                else -> onDigit(key)
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
