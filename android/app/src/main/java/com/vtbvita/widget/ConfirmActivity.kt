@@ -22,6 +22,7 @@ import com.vtbvita.widget.model.ConfirmationData
 import com.vtbvita.widget.model.accountsFromJson
 import com.vtbvita.widget.model.accountsToJson
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
+import com.vtbvita.widget.ui.theme.VtbGreen
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.util.Locale
@@ -44,7 +45,7 @@ class ConfirmActivity : ComponentActivity() {
                     data = data,
                     onDismiss = { finish() },
                     onSuccess = { msg ->
-                        PulseWidgetProvider.showStatus(applicationContext, msg)
+                        VitaWidgetProvider.showStatus(applicationContext, msg)
                         finish()
                     }
                 )
@@ -144,15 +145,23 @@ private fun ConfirmBottomSheet(
                         .align(Alignment.CenterHorizontally)
                 )
 
-                Text(data.title, style = MaterialTheme.typography.headlineSmall)
+                Text(data.title, style = MaterialTheme.typography.titleLarge)
                 HorizontalDivider()
+
+                // Сумма — крупно
+                Text(
+                    text = formatRub(data.amount),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider(thickness = 0.5.dp)
 
                 // Детали операции
                 data.recipientDisplayName?.let { DetailRow("Получатель", it) }
                 data.recipientPhone?.let { DetailRow("Телефон", it) }
                 data.topupPhone?.let { DetailRow("Номер", it) }
                 data.operator?.let { DetailRow("Оператор", it) }
-                DetailRow("Сумма", formatRub(data.amount))
 
                 // Выбор счёта списания
                 val selectedAcc = data.sourceAccounts.find { it.id == selectedAccountId }
@@ -165,7 +174,12 @@ private fun ConfirmBottomSheet(
                 }
 
                 selectedAcc?.let {
-                    DetailRow("После операции", formatRub(it.balance - data.amount))
+                    val afterAmount = it.balance - data.amount
+                    DetailRowColored(
+                        label = "После операции",
+                        value = formatRub(afterAmount),
+                        valueColor = if (afterAmount >= 0) VtbGreen else MaterialTheme.colorScheme.error
+                    )
                 }
 
                 // Выбор банка получателя (только если несколько вариантов)
@@ -238,6 +252,18 @@ private fun DetailRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun DetailRowColored(label: String, value: String, valueColor: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = valueColor)
     }
 }
 

@@ -2,6 +2,7 @@
     <string name="app_name">VTB Vita</string>
     <string name="widget_title">VTB Vita</string>
     <string name="widget_description">Быстрые переводы и баланс</string>
+    <string name="widget_prompt">Как настроение?</string>
     <string name="action_transfer">Перевод</string>
     <string name="action_balance">Баланс</string>
     <string name="action_topup">Пополнить</string>

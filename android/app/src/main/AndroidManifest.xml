@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="true"
@@ -28,11 +30,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Выбор PIN и вход в профиль -->
+        <activity
+            android:name=".PinEntryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita" />
+
+        <!-- Mock-экран банковского приложения -->
+        <activity
+            android:name=".MockBankActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita" />
+
         <!-- Экран ввода параметров (Перевод / Пополнение) -->
         <activity
             android:name=".InputActivity"
             android:exported="false"
-            android:theme="@style/Theme.VTBVita" />
+            android:theme="@style/Theme.VTBVita.BottomSheet" />
 
         <!-- Модал подтверждения операции (BottomSheet-стиль) -->
         <activity
@@ -46,16 +60,34 @@
             android:exported="false"
             android:theme="@style/Theme.VTBVita.BottomSheet" />
 
+        <!-- Выбор контакта для перевода (BottomSheet-стиль) -->
+        <activity
+            android:name=".ContactPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita.BottomSheet" />
+
+        <!-- Ввод параметров пополнения телефона (BottomSheet-стиль) -->
+        <activity
+            android:name=".TopupInputActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita.BottomSheet" />
+
+        <!-- Шаг 2 флоу перевода: детали (сумма, банк, счёт) -->
+        <activity
+            android:name=".TransferDetailsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita.BottomSheet" />
+
         <!-- AppWidget Provider -->
         <receiver
-            android:name=".PulseWidgetProvider"
+            android:name=".VitaWidgetProvider"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/pulse_widget_info" />
+                android:resource="@xml/vita_widget_info" />
         </receiver>
 
     </application>

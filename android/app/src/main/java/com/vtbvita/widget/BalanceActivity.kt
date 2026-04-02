@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.AccountInfo
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
+import com.vtbvita.widget.ui.theme.VtbGreen
 import java.util.Locale
 
 /**
@@ -84,7 +85,7 @@ private fun BalanceBottomSheet(onDismiss: () -> Unit) {
                         .align(Alignment.CenterHorizontally)
                 )
 
-                Text("Счета и балансы", style = MaterialTheme.typography.headlineSmall)
+                Text("Счета и балансы", style = MaterialTheme.typography.titleLarge)
                 HorizontalDivider()
 
                 when {
@@ -134,8 +135,10 @@ private fun AccountBalanceRow(acc: AccountInfo) {
         Text(
             text = formatRub(acc.balance),
             style = MaterialTheme.typography.bodyLarge,
-            color = if (acc.balance < 0) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurface
+            color = when {
+                acc.balance < 0 -> MaterialTheme.colorScheme.error
+                else -> VtbGreen
+            }
         )
     }
 }
