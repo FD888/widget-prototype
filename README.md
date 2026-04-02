@@ -1,6 +1,7 @@
 # VTB Vita — Прототип
 
 Голосовой/текстовый виджет на главном экране Android для мгновенных банковских операций.
+Одна фраза → перевод / баланс / пополнение телефона — без открытия приложения.
 
 **Дедлайн:** 5 апреля 2026 (публичный доступ) → 19 апреля 2026 (защита)
 
@@ -8,21 +9,42 @@
 
 ## Быстрый старт
 
-### NLP-сервис (Яна)
+### 1. Mock API (нужен при первом запуске и после перезагрузки)
+
 ```bash
-cd ml
-pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+cd ml/mock_api
+source venv/bin/activate          # или: python -m venv venv && pip install fastapi uvicorn
+uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-### Android-приложение (Денис)
+### 2. USB-тоннель (после каждого подключения телефона)
+
+```bash
+adb reverse tcp:8000 tcp:8000
+```
+
+### 3. Сборка и установка Android-приложения
+
 ```bash
 cd android
-./gradlew assembleDebug
+./gradlew installDebug
 # APK: android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-> Инструкция обновляется по мере разработки.
+> Без шагов 1–2 запросы к Mock API будут падать с ошибкой сети.
+
+---
+
+## Демо-сценарии
+
+| Сценарий | Действие |
+|----------|---------|
+| Перевод | Нажать на виджет → чип «Перевод» → выбрать контакт → сумма → «Отправить» |
+| Баланс | Нажать на виджет → чип «Баланс» |
+| Пополнение | Нажать на виджет → чип «Пополнить» → номер → «Пополнить» |
+| Голос | Нажать на микрофон в виджете → режим записи |
+| Будильник | Нажать на виджет → ввести «Разбуди в 7 утра» |
+| Открыть приложение | «Открой Telegram» / «Открой ВТБ» |
 
 ---
 
@@ -30,10 +52,10 @@ cd android
 
 | Документ | Что внутри |
 |----------|-----------|
-| [BACKLOG.md](BACKLOG.md) | Все задачи, статусы, ветки |
+| [BACKLOG.md](BACKLOG.md) | Все задачи, статусы, ADR |
 | [docs/PRODUCT.md](docs/PRODUCT.md) | Продуктовая логика, флоу, операции |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура, API контракт, C4-диаграммы |
-| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Что входит в MVP, критерии приёмки |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура, компоненты, API-контракт |
+| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Функциональные требования, критерии приёмки |
 | [CLAUDE.md](CLAUDE.md) | Контекст для AI-ассистента |
 
 ---
@@ -42,13 +64,13 @@ cd android
 
 | Человек | Зона |
 |---------|------|
-| Денис | Android Widget, интеграция, деплой |
-| Яна | NLP/ML сервис (Python) |
+| Денис | Android Widget, интеграция, Mock API, деплой |
+| Яна | NLP/ML сервис (Python, C-02) |
 
 ---
 
 ## Стек
 
-- **Android:** Kotlin + Jetpack Compose + AppWidget API
-- **NLP:** Python + FastAPI
+- **Android:** Kotlin + Jetpack Compose + AppWidget API (minSdk 26, targetSdk 34)
+- **Mock API:** Python + FastAPI (`ml/mock_api/`)
 - **Деплой:** Railway / Render (NLP) + GitHub Releases (APK)

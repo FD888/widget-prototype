@@ -1,144 +1,162 @@
 # Архитектура VTB Vita — Прототип
 
 > **Принцип документа:**
-> - **Текущее состояние** — только то, что реально есть в репозитории прямо сейчас. Обновляется автоматически при каждом коммите через `/commit`.
-> - **Целевой дизайн** — спецификация и план. Меняется вручную при смене архитектурного решения.
+> - **Текущее состояние** — только то, что реально есть в репозитории прямо сейчас.
+> - **Целевой дизайн** — спецификация и план. При расхождении — обновить «Текущее состояние».
 
 ---
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-03-30*
+*Последнее обновление: 2026-04-02*
 
 ### Структура репозитория
 
 ```
 widget-prototype/
-├── android/         — пусто (.gitkeep), Kotlin-приложение не начато
-├── ml/              — пусто (.gitkeep), Python NLP-сервис не начат
+├── android/
+│   └── app/src/main/
+│       ├── java/com/vtbvita/widget/
+│       │   ├── VitaWidgetProvider.kt       ← AppWidgetProvider
+│       │   ├── InputActivity.kt            ← прозрачный overlay ввода
+│       │   ├── BalanceActivity.kt          ← модал баланса
+│       │   ├── ConfirmActivity.kt          ← модал подтверждения (legacy)
+│       │   ├── ContactPickerActivity.kt    ← выбор контакта из телефонной книги
+│       │   ├── TransferDetailsActivity.kt  ← шаг 2 перевода (сумма, банк, счёт)
+│       │   ├── TopupInputActivity.kt       ← пополнение телефона
+│       │   ├── SystemIntentHandler.kt      ← будильник / таймер / звонок / запуск приложения
+│       │   ├── SessionManager.kt           ← SharedPreferences-сессия
+│       │   ├── MainActivity.kt             ← выбор профиля (PERSONAS)
+│       │   ├── PinEntryActivity.kt         ← PIN-экран (4 цифры)
+│       │   ├── MockBankActivity.kt         ← mock банковское приложение
+│       │   ├── api/MockApiService.kt       ← HTTP-клиент к FastAPI
+│       │   ├── nlp/NlpService.kt           ← обёртка NLP
+│       │   ├── model/Models.kt             ← data-классы
+│       │   └── ui/theme/                   ← VTB-цвета, типографика
+│       ├── res/
+│       │   ├── layout/widget_vita.xml      ← RemoteViews-макет виджета
+│       │   ├── drawable/widget_bg.xml      ← синий градиент, cornerRadius 32dp
+│       │   ├── drawable/mic_bg.xml         ← фон кнопки микрофона
+│       │   ├── drawable/widget_field_bg.xml
+│       │   └── xml/vita_widget_info.xml    ← метаданные AppWidget
+│       └── AndroidManifest.xml
+├── ml/
+│   └── mock_api/
+│       ├── main.py     ← FastAPI: /parse, /balance, /command, /confirm
+│       ├── data.py     ← mock-данные (баланс, контакты, счета)
+│       └── venv/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRODUCT.md
 │   └── REQUIREMENTS.md
-├── .claude/
-│   └── commands/
-│       └── commit.md   — кастомная /commit команда
-├── .gitignore
+├── .claude/commands/
 ├── BACKLOG.md
 ├── CLAUDE.md
 └── README.md
 ```
 
-### Компоненты (реализованные)
+### Реализованные компоненты
 
-Пока нет — идёт стадия подготовки (C-01).
+| Компонент | Файл | Статус |
+|-----------|------|--------|
+| AppWidget (RemoteViews) | `VitaWidgetProvider.kt` | ✅ |
+| Прозрачный overlay ввода | `InputActivity.kt` | ✅ |
+| Голосовой ввод (MediaRecorder + waveform) | `InputActivity.kt` | ✅ |
+| Системные интенты (alarm/timer/call/app) | `SystemIntentHandler.kt` | ✅ |
+| Выбор контакта (ContactsContract) | `ContactPickerActivity.kt` | ✅ |
+| Перевод (2 шага) | `TransferDetailsActivity.kt` | ✅ |
+| Пополнение телефона | `TopupInputActivity.kt` | ✅ |
+| Баланс | `BalanceActivity.kt` | ✅ |
+| Сессия (login/logout) | `SessionManager.kt` | ✅ |
+| Выбор профиля | `MainActivity.kt` | ✅ |
+| PIN-вход | `PinEntryActivity.kt` | ✅ |
+| Mock банковское приложение | `MockBankActivity.kt` | ✅ |
+| Mock API (FastAPI) | `ml/mock_api/main.py` | ✅ |
+| NLP intent parsing | `ml/` (C-02) | 🔄 in progress (Яна) |
 
 ### Зафиксированные технические решения
 
 | Дата | Решение | Причина |
 |------|---------|---------|
-| 2026-03-30 | Android виджет: Kotlin + AppWidget API (RemoteViews) | RemoteViews стабильнее Glance, больше документации, Glance конвертируется в RemoteViews под капотом — лишний слой багов |
-| 2026-03-30 | Ввод текста: тап по виджету → InputActivity → результат в виджет | EditText в AppWidget запрещён Android OS — оба подхода (Glance и RemoteViews) имеют это ограничение |
-| 2026-03-30 | NLP: DeepSeek API (прототип) → self-hosted на инфраструктуре ВТБ (продакшен) | Трансграничная передача данных: для реального продукта модель разворачивается внутри периметра банка |
-| 2026-03-30 | Mock-данные: JSON-файлы или хардкод, без реального API | Критическое ограничение (безопасность/демо) |
+| 2026-03-30 | Android виджет: RemoteViews (не Glance) | Glance конвертируется в RemoteViews под капотом, добавляет баги, меньше документации |
+| 2026-03-30 | EditText в виджете невозможен — флоу: тап → InputActivity | Ограничение Android OS, одинаково для RemoteViews и Glance |
+| 2026-03-30 | NLP: DeepSeek API для прототипа, self-hosted для продакшена ВТБ | Трансграничная передача данных — в реальном продукте ВТБ разворачивает модель на своей инфраструктуре |
+| 2026-03-30 | Mock-данные: JSON/хардкод, без реального API | Критическое ограничение прототипа |
+| 2026-03-31 | Pill-форма: прозрачный FrameLayout + внутренний LinearLayout 64dp | Лончеры растягивают ячейку — фиксированная высота только у внутреннего слоя |
+| 2026-03-31 | InputActivity: прозрачная тема, overlay на 70% экрана | Иллюзия «выплывания» без смены экрана |
+| 2026-03-31 | hideWidget в onCreate, restoreWidget в onPause | onDestroy ненадёжен |
+| 2026-04-01 | SessionManager (SharedPreferences) | Персонализация виджета + контроль доступа |
+| 2026-04-02 | adb reverse tcp:8000 tcp:8000 для USB-тоннеля | Mock API недоступен с устройства без тоннеля |
 
 ---
 
 ## Целевой дизайн
 
-> Спецификация того, к чему идём. Не факт — план. При расхождении с реализацией — обновить «Текущее состояние», а не этот раздел.
-
 ### Прототип vs Продакшен
 
 | Компонент | Продакшен (реальный ВТБ) | Прототип (наш код) |
 |-----------|------------------------|-------------------|
-| STT | Собственный STT-сервис ВТБ | Android SpeechRecognizer / пропускаем в Phase 1 |
-| NLP | NLP/Chatbot Service ВТБ (gRPC) | Наш FastAPI-сервис (`ml/`) |
-| Core Banking API | Внутренний REST ВТБ | Mock-данные (JSON-файлы) |
-| Биометрия | Android BiometricPrompt | UI-заглушка (кнопка «Подтвердить») |
-| JWT-сессия | Сессия VTB Online App | Захардкоженный флаг `isAuthenticated = true` |
-| Push/FCM | Firebase → VTB Platform | Mock-сообщения в Phase 2 |
+| STT | Собственный STT-сервис ВТБ | MediaRecorder (запись) — распознавание в Phase 2 |
+| NLP | NLP/Chatbot Service ВТБ (gRPC) | FastAPI-сервис (`ml/mock_api/`) |
+| Core Banking API | Внутренний REST ВТБ | Mock-данные (data.py) |
+| Биометрия | Android BiometricPrompt | UI-заглушка — кнопка «Подтвердить» |
+| JWT-сессия | Сессия VTB Online App | SharedPreferences (SessionManager) |
+| Контакты | Серверная адресная книга | Android ContactsContract (реальная книга) |
+| Push/FCM | Firebase → VTB Platform | Не реализовано |
 
 ### Компонентная схема
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Android Device                                          │
-│                                                          │
-│  ┌─────────────────────────────────────────────────────┐│
-│  │ VTB Vita App (наш APK)                             ││
-│  │                                                      ││
-│  │  ┌──────────────────┐   ┌──────────────────────┐   ││
-│  │  │  VitaWidget     │   │  ConfirmActivity      │   ││
-│  │  │  (AppWidget UI)  │──▶│  (модал подтверждения)│   ││
-│  │  │  Kotlin/Compose  │   │  Kotlin/Compose       │   ││
-│  │  └────────┬─────────┘   └──────────────────────┘   ││
-│  │           │ HTTP                                     ││
-│  └───────────┼─────────────────────────────────────────┘│
-│              │                                           │
-└──────────────┼───────────────────────────────────────────┘
-               │ HTTP (localhost или удалённый)
-┌──────────────▼───────────────────────────────────────────┐
-│  NLP / Mock API  (ml/ — Python FastAPI)                   │
-│                                                           │
-│  POST /parse   ← текст команды                            │
-│  → { intent, recipient, amount, account }                 │
-│                                                           │
-│  GET /balance  → { balance: 15320 }  (mock)               │
-│  POST /confirm → { status: "success" }  (mock)            │
-└───────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Android Device                                              │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ VTB Vita App (APK)                                      ││
+│  │                                                          ││
+│  │  ┌───────────────┐   ┌───────────────────────────────┐  ││
+│  │  │ VitaWidget    │   │ InputActivity (overlay)        │  ││
+│  │  │ (RemoteViews) │──▶│  TEXT mode: поле + chips       │  ││
+│  │  │               │   │  REC mode: waveform + таймер   │  ││
+│  │  └───────┬───────┘   └───────────┬───────────────────┘  ││
+│  │          │                       │                        ││
+│  │  ┌───────▼──────────────────┐    │                        ││
+│  │  │ SessionManager           │    │                        ││
+│  │  │ SharedPreferences        │    │                        ││
+│  │  └──────────────────────────┘    │                        ││
+│  │                                  ▼                        ││
+│  │  ┌────────────────────────────────────────────────────┐  ││
+│  │  │ Banking flows                                       │  ││
+│  │  │  ContactPickerActivity → TransferDetailsActivity    │  ││
+│  │  │  TopupInputActivity                                 │  ││
+│  │  │  BalanceActivity                                    │  ││
+│  │  └───────────────────────┬────────────────────────────┘  ││
+│  │                          │ HTTP                           ││
+│  └──────────────────────────┼─────────────────────────────┘ │
+│                             │ localhost:8000                  │
+└─────────────────────────────┼───────────────────────────────┘
+                              │ (adb reverse tcp:8000)
+┌─────────────────────────────▼───────────────────────────────┐
+│  Mock API  (ml/mock_api/ — Python FastAPI)                   │
+│                                                              │
+│  POST /parse    ← текст команды → { intent, entities }      │
+│  GET  /balance  → { balance: 15320, account: "основной" }   │
+│  POST /command  ← intent + params → данные для модала       │
+│  POST /confirm  ← подтверждение → { status: "success" }     │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### Целевая структура Android-приложения
+### System intents (не требуют Mock API)
 
 ```
-android/app/src/main/java/com/vtbvita/
-├── widget/
-│   ├── VitaWidgetProvider.kt   ← AppWidgetProvider (RemoteViews)
-│   └── VitaWidgetUpdater.kt    ← логика обновления RemoteViews
-├── ui/
-│   ├── ConfirmActivity.kt       ← модал подтверждения
-│   └── InputActivity.kt         ← экран ввода команды
-├── api/
-│   ├── VitaApiClient.kt        ← HTTP-клиент → NLP-сервис
-│   └── MockData.kt              ← fallback mock-данные
-└── model/
-    ├── Intent.kt
-    └── Transaction.kt
-```
-
-### Целевая структура NLP-сервиса
-
-```
-ml/
-├── main.py              ← FastAPI app
-├── parser/
-│   ├── intent.py        ← классификация intent'а
-│   └── entities.py      ← извлечение сущностей
-├── mock/
-│   └── contacts.json    ← mock-история переводов
-├── requirements.txt
-└── README.md
-```
-
-### API-контракт (POST /parse)
-
-```json
-// Request
-{ "text": "Переведи Кате тысячу" }
-
-// Response
-{
-  "intent": "transfer",
-  "recipient": { "name": "Катя Иванова", "card": "•4521" },
-  "amount": 1000,
-  "account": "основной",
-  "confidence": 0.95
-}
+SystemIntentHandler.parse(text, context)
+  → будильник  : AlarmClock.ACTION_SET_ALARM
+  → таймер     : AlarmClock.ACTION_SET_TIMER
+  → звонок     : ACTION_DIAL
+  → открыть ПО : getLaunchIntentForPackage (appMap)
 ```
 
 ### Деплой (задача C-05)
 
 - **NLP-сервис:** Railway / Render / Fly.io (бесплатный тир)
 - **Android APK:** GitHub Releases
-- **Демо:** APK установлен → виджет добавлен → 3 операции живьём
+- **Демо:** APK установлен → виджет добавлен → операции живьём

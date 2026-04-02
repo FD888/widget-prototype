@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base app theme (used by MainActivity, InputActivity) -->
+    <style name="Theme.VTBVita" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+        Transparent overlay theme for BottomSheet-style activities.
+        The Compose content draws its own dim backdrop.
+    -->
+    <style name="Theme.VTBVita.BottomSheet" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+
+</resources>

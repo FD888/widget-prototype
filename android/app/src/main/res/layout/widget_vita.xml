@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Прозрачный контейнер на всю ячейку — видимая капсула
+     фиксированной высоты центрируется внутри него -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Капсула: фиксированная высота + центрирование = всегда пилюля -->
+    <LinearLayout
+        android:id="@+id/capsule"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_gravity="center_vertical"
+        android:background="@drawable/widget_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="18dp"
+        android:paddingEnd="10dp">
+
+        <!-- Динамическая подсказка (тап → InputActivity) -->
+        <TextView
+            android:id="@+id/tv_prompt"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:alpha="0.80"
+            android:text="@string/widget_prompt"
+            android:textColor="#FFFFFFFF"
+            android:textSize="17sp" />
+
+        <!-- Статус после операции (~10 сек, затем сброс) -->
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:textColor="#FFFFFFFF"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+        <!-- Кнопка микрофона -->
+        <ImageView
+            android:id="@+id/btn_mic"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/mic_bg"
+            android:contentDescription="@null"
+            android:padding="10dp"
+            android:src="@drawable/ic_mic" />
+
+    </LinearLayout>
+
+</FrameLayout>

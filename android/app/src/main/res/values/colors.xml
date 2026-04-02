@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="vtb_blue">#003B8E</color>
+    <color name="vtb_blue_dark">#002B6B</color>
+    <color name="vtb_blue_light">#1565C0</color>
+    <color name="vtb_surface">#F5F7FA</color>
+</resources>
