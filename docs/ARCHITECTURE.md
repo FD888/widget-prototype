@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-04*
+*Последнее обновление: 2026-04-05*
 
 ### Структура репозитория
 
@@ -34,6 +34,7 @@ widget-prototype/
 │       │   ├── ContactDisambiguationActivity.kt ← bottom sheet выбора когда 2+ кандидатов
 │       │   ├── api/MockApiService.kt       ← HTTP-клиент к FastAPI
 │       │   ├── VoiceStreamingRecorder.kt   ← WebSocket PCM-стриминг на сервер (16kHz/16-bit)
+│       │   ├── VoiceRecordingService.kt    ← Foreground Service: запись голоса + анимация колец в виджете
 │       │   ├── nlp/NlpService.kt           ← HTTP-клиент к /parse (object, не interface)
 │       │   ├── nlp/ContactMatcher.kt       ← нечёткий поиск по ContactsContract (склонения)
 │       │   ├── nlp/ContactMemory.kt        ← SharedPreferences: история выборов → boost score
@@ -43,6 +44,11 @@ widget-prototype/
 │       │   ├── layout/widget_vita.xml      ← RemoteViews-макет виджета
 │       │   ├── drawable/widget_bg.xml      ← синий градиент, cornerRadius 32dp
 │       │   ├── drawable/mic_bg.xml         ← фон кнопки микрофона
+│       │   ├── drawable/stop_bg.xml        ← красный фон кнопки отмены
+│       │   ├── drawable/submit_bg.xml      ← тёмно-синий фон кнопки отправки
+│       │   ├── drawable/ripple_ring.xml    ← кольцо пульсации вокруг кнопки отправки
+│       │   ├── drawable/ic_close.xml       ← иконка ✕
+│       │   ├── drawable/ic_arrow_up.xml    ← иконка ↑ (отправить)
 │       │   ├── drawable/widget_field_bg.xml
 │       │   └── xml/vita_widget_info.xml    ← метаданные AppWidget
 │       └── AndroidManifest.xml
@@ -74,6 +80,9 @@ widget-prototype/
 | Disambiguation bottom sheet (2+ кандидатов) | `ContactDisambiguationActivity.kt` | ✅ |
 | Обучение на выборах пользователя (boost score) | `nlp/ContactMemory.kt` | ✅ |
 | WebSocket PCM-стриминг (голос → сервер → SpeechKit) | `VoiceStreamingRecorder.kt` | ✅ |
+| Голосовой ввод нативно в виджете (Foreground Service) | `VoiceRecordingService.kt` | ✅ |
+| Пульсирующие кольца в виджете (~12fps, partiallyUpdateAppWidget) | `VoiceRecordingService.kt` | ✅ |
+| VAD: авто-сабмит по тишине 1.5 сек | `VoiceRecordingService.kt` | ✅ |
 | Перевод (2 шага) | `TransferDetailsActivity.kt` | ✅ |
 | Пополнение телефона | `TopupInputActivity.kt` | ✅ |
 | Баланс | `BalanceActivity.kt` | ✅ |
@@ -105,6 +114,10 @@ widget-prototype/
 | 2026-04-03 | MainActivity роутинг: если persona сохранена → PinEntryActivity напрямую | Не нужно заново выбирать профиль после перезапуска приложения |
 | 2026-04-04 | BankingSession.putInIntent() / restoreFromIntent() — токен передаётся в дочерние Activity через Intent | onPause() очищает BankingSession до того, как дочерняя Activity делает API-запрос; Intent гарантирует передачу |
 | 2026-04-04 | MockBankActivity: реальные Compose-экраны вместо JPEG-скриншотов | Демо выглядит как живое приложение; добавлена зависимость material-icons-extended |
+| 2026-04-05 | Голосовой ввод перенесён из InputActivity в VoiceRecordingService (Foreground Service) | InputActivity используется только для текста и PIN; виджет сам управляет состояниями IDLE/PREPARING/RECORDING |
+| 2026-04-05 | Анимация колец в виджете через partiallyUpdateAppWidget ~12fps + setFloat (setScaleX/Y/Alpha) | RemoteViews не поддерживает нативную анимацию; частичное обновление через IPC минимально нагружает систему |
+| 2026-04-05 | VAD: клиентский детектор тишины (amplitude < 0.20 на 1.5 сек) → auto-submit | После ≥0.6 сек речи; защита от двойного submit через флаг `submitted` |
+| 2026-04-05 | "DONE"-сигнал протокол WebSocket: клиент шлёт текст "DONE" вместо закрытия соединения | Закрытие WS до ответа сервера → onFinal никогда не приходит; сервер выходит из цикла по сигналу и шлёт final по открытому соединению |
 
 ---
 

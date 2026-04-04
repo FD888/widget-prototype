@@ -24,6 +24,8 @@ class VoiceStreamingRecorder(
     private val onPartial: (String) -> Unit,
     private val onFinal:   (String) -> Unit,
     private val onError:   (String) -> Unit,
+    /** Вызывается когда WebSocket открылся И AudioRecord начал запись. */
+    private val onReady:   () -> Unit = {},
 ) {
 
     companion object {
@@ -97,6 +99,7 @@ class VoiceStreamingRecorder(
                 webSocket = ws
                 rec.startRecording()
                 Log.d(TAG, "AudioRecord started, state=${rec.recordingState}")
+                onReady()
                 recordingJob = scope.launch(Dispatchers.IO) {
                     val buf = ByteArray(CHUNK_BYTES)
                     var chunkCount = 0
@@ -162,5 +165,29 @@ class VoiceStreamingRecorder(
         audioRecord = null
         try { webSocket?.close(1000, "done") } catch (_: Exception) {}
         webSocket = null
+    }
+
+    /**
+     * Останавливает микрофон и отправляет серверу сигнал "DONE" вместо закрытия WebSocket.
+     * Сервер выходит из цикла, распознаёт накопленный звук, отвечает {"type":"final"},
+     * после чего сам закрывает соединение. onFinal/onMessage сработают штатно.
+     * Используется для кнопки "Готово" — нельзя закрывать WebSocket до получения ответа.
+     */
+    fun stopAndSubmit() {
+        running   = false
+        amplitude = 0.08f
+        recordingJob?.cancel()
+        recordingJob = null
+        try { audioRecord?.stop()    } catch (_: Exception) {}
+        try { audioRecord?.release() } catch (_: Exception) {}
+        audioRecord = null
+        // Отправляем DONE, WebSocket остаётся открытым для получения final
+        val sent = try { webSocket?.send("DONE") ?: false } catch (_: Exception) { false }
+        if (!sent) {
+            // Фоллбэк: обычное закрытие если отправить не удалось
+            try { webSocket?.close(1000, "done") } catch (_: Exception) {}
+            webSocket = null
+        }
+        // webSocket НЕ обнуляем — onMessage должен сработать для final
     }
 }

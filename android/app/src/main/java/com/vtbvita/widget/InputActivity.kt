@@ -9,7 +9,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,7 +24,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -59,9 +61,12 @@ class InputActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_INTENT_TYPE = "intent_type"
-        const val EXTRA_MODE = "mode"
-        const val MODE_TEXT = "text"
-        const val MODE_RECORDING = "recording"
+        const val EXTRA_MODE        = "mode"
+        const val EXTRA_VOICE_TEXT  = "voice_text"
+        const val MODE_TEXT         = "text"
+        const val MODE_RECORDING    = "recording"
+        /** Голос уже распознан сервисом — сразу отправляем на NLP, показываем PIN если нужно. */
+        const val MODE_VOICE_RESULT = "voice_result"
     }
 
     override fun onPause() {
@@ -93,7 +98,8 @@ class InputActivity : ComponentActivity() {
         setContent {
             VTBVitaTheme {
                 InputOverlay(
-                    startInRecordingMode = startMode == MODE_RECORDING,
+                    startMode = startMode,
+                    startVoiceText = intent.getStringExtra(EXTRA_VOICE_TEXT),
                     onDismiss = { finish() },
                     onBalance = {
                         val i = android.content.Intent(this, BalanceActivity::class.java)
@@ -145,7 +151,8 @@ class InputActivity : ComponentActivity() {
 
 @Composable
 private fun InputOverlay(
-    startInRecordingMode: Boolean,
+    startMode: String,
+    startVoiceText: String?,
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
     onTransfer: (name: String?, phone: String?, bankDisplayName: String?, amount: Double?) -> Unit,
@@ -154,11 +161,13 @@ private fun InputOverlay(
     onConfirm: (ConfirmationData) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    var contentVisible by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf("") }
+    val isVoiceResult = startMode == InputActivity.MODE_VOICE_RESULT
     // Инициализируем сразу — нет мигания текстового режима при открытии через микрофон
-    var isRecording by remember { mutableStateOf(startInRecordingMode) }
+    var isRecording by remember { mutableStateOf(startMode == InputActivity.MODE_RECORDING) }
     val focusRequester = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -231,21 +240,26 @@ private fun InputOverlay(
         if (granted) startStreaming()
     }
 
-    // Автозапуск записи если открыли через кнопку микрофона
-    LaunchedEffect(startInRecordingMode) {
-        if (startInRecordingMode) {
-            delay(150)
-            val hasPermission = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
-            if (hasPermission) {
-                startStreaming()
-            } else {
-                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    // Автозапуск в зависимости от режима
+    LaunchedEffect(startMode) {
+        when (startMode) {
+            InputActivity.MODE_RECORDING -> {
+                delay(150)
+                val hasPermission = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPermission) startStreaming()
+                else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
-        } else {
-            delay(80)
-            focusRequester.requestFocus()
+            InputActivity.MODE_VOICE_RESULT -> {
+                // Голос уже распознан — сразу отправляем на NLP
+                val vt = startVoiceText
+                if (!vt.isNullOrBlank()) submitVoice(vt) else onDismiss()
+            }
+            else -> {
+                delay(80)
+                focusRequester.requestFocus()
+            }
         }
     }
 
@@ -261,6 +275,8 @@ private fun InputOverlay(
         }
     }
 
+    LaunchedEffect(Unit) { contentVisible = true }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -275,6 +291,13 @@ private fun InputOverlay(
             )
     ) {
         val topOffset = maxHeight * 0.15f
+        AnimatedVisibility(
+            visible = contentVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -80 },
+                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(durationMillis = 250))
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -297,7 +320,18 @@ private fun InputOverlay(
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isRecording) {
+                if (isVoiceResult) {
+                    // ── Режим voice result: голос уже распознан, ждём NLP ────
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = if (isLoading) "Обрабатываю…" else startVoiceText ?: "",
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 15.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else if (isRecording) {
                     // ── Режим записи ──────────────────────────────────
                     // Кнопка отмены (красный крестик)
                     Box(
@@ -331,7 +365,7 @@ private fun InputOverlay(
                         Text(
                             text     = if (partialText.isEmpty()) "Говорите..." else partialText,
                             color    = Color.White.copy(alpha = if (partialText.isEmpty()) 0.40f else 0.92f),
-                            fontSize = 15.sp,
+                            fontSize = 17.sp,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -367,7 +401,7 @@ private fun InputOverlay(
                                 )
                             }
                         }
-                        // Кнопка с галочкой
+                        // Кнопка отправки (стрелка вверх)
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
@@ -381,8 +415,8 @@ private fun InputOverlay(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                Icons.Default.Check,
-                                contentDescription = "Готово",
+                                painter = painterResource(R.drawable.ic_arrow_up),
+                                contentDescription = "Отправить",
                                 tint     = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
@@ -397,7 +431,7 @@ private fun InputOverlay(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester),
-                        textStyle = TextStyle(color = Color.White, fontSize = 17.sp),
+                        textStyle = TextStyle(color = Color.White, fontSize = 19.sp),
                         cursorBrush = SolidColor(Color.White),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -421,7 +455,7 @@ private fun InputOverlay(
                                 Text(
                                     "Как настроение?",
                                     color = Color.White.copy(alpha = 0.6f),
-                                    fontSize = 17.sp
+                                    fontSize = 19.sp
                                 )
                             }
                             innerTextField()
@@ -430,29 +464,61 @@ private fun InputOverlay(
 
                     Spacer(Modifier.width(8.dp))
 
-                    // Иконка микрофона — переключает в режим записи
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
-                            .clickable {
-                                val hasPermission = ContextCompat.checkSelfPermission(
-                                    context, Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPermission) {
-                                    startStreaming()
-                                } else {
-                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_mic),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
+                    if (text.isNotEmpty()) {
+                        // Текст введён — кнопка отправки (стрелка вверх)
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
+                                .clickable {
+                                    if (!isLoading) {
+                                        errorMsg = ""
+                                        submitText(
+                                            text, context, scope, onDismiss,
+                                            onBalance = { requirePin(onBalance) },
+                                            onTransfer = { n, p, b, a -> requirePin { onTransfer(n, p, b, a) } },
+                                            onAmbiguousTransfer = { candidates, raw, a -> requirePin { onAmbiguousTransfer(candidates, raw, a) } },
+                                            onTopup = { p, a -> requirePin { onTopup(p, a) } },
+                                            onConfirm = onConfirm,
+                                            setLoading = { isLoading = it },
+                                            onError = { errorMsg = it }
+                                        )
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_arrow_up),
+                                contentDescription = "Отправить",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    } else {
+                        // Поле пустое — кнопка микрофона
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
+                                .clickable {
+                                    val hasPermission = ContextCompat.checkSelfPermission(
+                                        context, Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPermission) {
+                                        startStreaming()
+                                    } else {
+                                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_mic),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -468,16 +534,21 @@ private fun InputOverlay(
                 )
             }
 
-            // ── Чипы (только в текстовом режиме) ──────────────────────
-            if (!isRecording) {
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTransfer(null, null, null, null) } }
-                    QuickChip("Баланс", Modifier.weight(1f), enabled = !isLoading) { requirePin(onBalance) }
-                    QuickChip("Пополнить", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTopup(null, null) } }
+            // ── Чипы (только в текстовом режиме) — fade-in при появлении ──
+            AnimatedVisibility(
+                visible = !isRecording,
+                enter = fadeIn(animationSpec = tween(durationMillis = 220))
+            ) {
+                Column {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTransfer(null, null, null, null) } }
+                        QuickChip("Баланс", Modifier.weight(1f), enabled = !isLoading) { requirePin(onBalance) }
+                        QuickChip("Пополнить", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTopup(null, null) } }
+                    }
                 }
             }
 
@@ -500,6 +571,7 @@ private fun InputOverlay(
                 )
             }
         }
+        } // AnimatedVisibility
     }
 }
 
@@ -770,6 +842,6 @@ private fun QuickChip(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.4f), fontSize = 13.sp)
+        Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.4f), fontSize = 16.sp)
     }
 }

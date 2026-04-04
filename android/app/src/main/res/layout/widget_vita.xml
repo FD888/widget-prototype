@@ -1,45 +1,88 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Прозрачный контейнер на всю ячейку — видимая капсула
-     фиксированной высоты центрируется внутри него -->
+<!-- clipChildren=false позволяет кольцам выступать за 64dp капсулы -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
-    <!-- Капсула: фиксированная высота + центрирование = всегда пилюля -->
     <LinearLayout
         android:id="@+id/capsule"
         android:layout_width="match_parent"
         android:layout_height="64dp"
         android:layout_gravity="center_vertical"
         android:background="@drawable/widget_bg"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="18dp"
-        android:paddingEnd="10dp">
+        android:paddingStart="14dp"
+        android:paddingEnd="8dp">
 
-        <!-- Динамическая подсказка (тап → InputActivity) -->
+        <!-- ── IDLE ─────────────────────────────────────────── -->
+
         <TextView
             android:id="@+id/tv_prompt"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:alpha="0.80"
-            android:text="@string/widget_prompt"
+android:text="@string/widget_prompt"
             android:textColor="#FFFFFFFF"
             android:textSize="17sp" />
 
-        <!-- Статус после операции (~10 сек, затем сброс) -->
         <TextView
             android:id="@+id/tv_status"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:gravity="center"
+android:gravity="center"
             android:textColor="#FFFFFFFF"
             android:textSize="14sp"
             android:visibility="gone" />
 
-        <!-- Кнопка микрофона -->
+        <!-- ── RECORDING — левая кнопка отмены ──────────────── -->
+
+        <ImageView
+            android:id="@+id/btn_cancel_rec"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/stop_bg"
+            android:contentDescription="@null"
+            android:padding="10dp"
+            android:src="@drawable/ic_close"
+            android:visibility="gone" />
+
+        <!-- ── PREPARING — спиннер ───────────────────────────── -->
+
+        <ProgressBar
+            android:id="@+id/pb_preparing"
+            style="?android:attr/progressBarStyle"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="8dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#FFFFFFFF"
+            android:visibility="gone" />
+
+        <!-- ── PREPARING + RECORDING — текст ─────────────────── -->
+
+        <TextView
+            android:id="@+id/tv_recording_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:alpha="0.85"
+            android:ellipsize="end"
+android:maxLines="2"
+            android:textColor="#FFFFFFFF"
+            android:textSize="15sp"
+            android:visibility="gone" />
+
+        <!-- ── IDLE — кнопка микрофона ───────────────────────── -->
+
         <ImageView
             android:id="@+id/btn_mic"
             android:layout_width="44dp"
@@ -49,6 +92,78 @@
             android:contentDescription="@null"
             android:padding="10dp"
             android:src="@drawable/ic_mic" />
+
+        <!-- ── PREPARING — кнопка отмены (справа) ────────────── -->
+
+        <ImageView
+            android:id="@+id/btn_stop"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/stop_bg"
+            android:contentDescription="@null"
+            android:padding="11dp"
+            android:src="@drawable/ic_close"
+            android:visibility="gone" />
+
+        <!-- ── RECORDING — контейнер с кольцами + кнопка ✓ ─── -->
+        <!-- 80dp×80dp: переполняет 64dp-капсулу на 8dp сверху/снизу
+             clipChildren=false позволяет кольцам быть видимыми снаружи -->
+
+        <FrameLayout
+            android:id="@+id/fl_recording_submit"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_marginStart="6dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:visibility="gone">
+
+            <!-- Кольцо 1 — исходный scale=0, растёт к 1 -->
+            <ImageView
+                android:id="@+id/ring1"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:layout_gravity="center"
+                android:alpha="0"
+                android:scaleX="0"
+                android:scaleY="0"
+                android:src="@drawable/ripple_ring" />
+
+            <!-- Кольцо 2 — сдвиг фазы 1/3 -->
+            <ImageView
+                android:id="@+id/ring2"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:layout_gravity="center"
+                android:alpha="0"
+                android:scaleX="0"
+                android:scaleY="0"
+                android:src="@drawable/ripple_ring" />
+
+            <!-- Кольцо 3 — сдвиг фазы 2/3 -->
+            <ImageView
+                android:id="@+id/ring3"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:layout_gravity="center"
+                android:alpha="0"
+                android:scaleX="0"
+                android:scaleY="0"
+                android:src="@drawable/ripple_ring" />
+
+            <!-- Кнопка ✓ в центре -->
+            <ImageView
+                android:id="@+id/btn_submit"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:background="@drawable/submit_bg"
+                android:contentDescription="@null"
+                android:padding="12dp"
+                android:src="@drawable/ic_arrow_up" />
+
+        </FrameLayout>
 
     </LinearLayout>
 

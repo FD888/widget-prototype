@@ -25,94 +25,187 @@ class VitaWidgetProvider : AppWidgetProvider() {
 
     companion object {
 
-        /** Строит RemoteViews в зависимости от состояния сессии. */
+        // ── Состояния виджета ────────────────────────────────────────────────
+
         fun defaultViews(context: Context): RemoteViews =
             RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setViewVisibility(R.id.capsule, View.VISIBLE)
-                setViewVisibility(R.id.tv_status, View.GONE)
+                // IDLE visible
                 setViewVisibility(R.id.tv_prompt, View.VISIBLE)
+                setViewVisibility(R.id.btn_mic, View.VISIBLE)
+                // все recording-элементы скрыты
+                setViewVisibility(R.id.tv_status, View.GONE)
+                setViewVisibility(R.id.btn_cancel_rec, View.GONE)
+                setViewVisibility(R.id.pb_preparing, View.GONE)
+                setViewVisibility(R.id.tv_recording_text, View.GONE)
+                setViewVisibility(R.id.btn_stop, View.GONE)
+                setViewVisibility(R.id.fl_recording_submit, View.GONE)
 
-                if (SessionManager.isLoggedIn(context)) {
+                val fullyLoggedIn = SessionManager.hasAppToken(context) && SessionManager.isLoggedIn(context)
+                if (fullyLoggedIn) {
                     val prompt = SessionManager.currentPersona(context)?.widgetPrompt
                         ?: context.getString(R.string.widget_prompt)
                     setTextViewText(R.id.tv_prompt, prompt)
                     setFloat(R.id.tv_prompt, "setAlpha", 0.80f)
-                    setOnClickPendingIntent(R.id.tv_prompt, inputPi(context, recording = false))
-                    setOnClickPendingIntent(R.id.btn_mic, inputPi(context, recording = true))
+                    setFloat(R.id.capsule, "setAlpha", 1.0f)
+                    setViewVisibility(R.id.btn_mic, View.VISIBLE)
+                    setOnClickPendingIntent(R.id.tv_prompt, textInputPi(context))
+                    setOnClickPendingIntent(R.id.btn_mic, voiceStartPi(context))
                 } else {
-                    setTextViewText(R.id.tv_prompt, "Войдите в аккаунт")
-                    setFloat(R.id.tv_prompt, "setAlpha", 0.65f)
+                    setTextViewText(R.id.tv_prompt, "Войдите в приложение")
+                    setFloat(R.id.tv_prompt, "setAlpha", 0.75f)
+                    setFloat(R.id.capsule, "setAlpha", 0.7f)
+                    setViewVisibility(R.id.btn_mic, View.GONE)
                     setOnClickPendingIntent(R.id.tv_prompt, mainPi(context))
-                    setOnClickPendingIntent(R.id.btn_mic, mainPi(context))
                 }
             }
 
-        /** Скрывает капсулу виджета пока открыт InputActivity. */
+        /** PREPARING: спиннер + "Подготовка…" + кнопка отмены справа. */
+        fun showPreparing(context: Context) {
+            val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                setViewVisibility(R.id.capsule, View.VISIBLE)
+                setViewVisibility(R.id.tv_prompt, View.GONE)
+                setViewVisibility(R.id.tv_status, View.GONE)
+                setViewVisibility(R.id.btn_mic, View.GONE)
+                setViewVisibility(R.id.btn_cancel_rec, View.GONE)
+                setViewVisibility(R.id.fl_recording_submit, View.GONE)
+                // Показываем PREPARING
+                setViewVisibility(R.id.pb_preparing, View.VISIBLE)
+                setViewVisibility(R.id.tv_recording_text, View.VISIBLE)
+                setTextViewText(R.id.tv_recording_text, "Подготовка…")
+                setFloat(R.id.tv_recording_text, "setAlpha", 0.65f)
+                setViewVisibility(R.id.btn_stop, View.VISIBLE)
+                setOnClickPendingIntent(R.id.btn_stop, voiceStopPi(context))
+            }
+            updateAll(context, views)
+        }
+
+        /**
+         * RECORDING: кнопка ✕ слева + текст + кольца с кнопкой ✓ справа.
+         * После этого вызова сервис запускает анимационный цикл через
+         * partiallyUpdateAppWidget() для колец.
+         */
+        fun showRecording(context: Context, partialText: String) {
+            val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                setViewVisibility(R.id.capsule, View.VISIBLE)
+                setViewVisibility(R.id.tv_prompt, View.GONE)
+                setViewVisibility(R.id.tv_status, View.GONE)
+                setViewVisibility(R.id.btn_mic, View.GONE)
+                setViewVisibility(R.id.pb_preparing, View.GONE)
+                setViewVisibility(R.id.btn_stop, View.GONE)
+                // RECORDING
+                setViewVisibility(R.id.btn_cancel_rec, View.VISIBLE)
+                setOnClickPendingIntent(R.id.btn_cancel_rec, voiceStopPi(context))
+                setViewVisibility(R.id.tv_recording_text, View.VISIBLE)
+                val display = partialText.ifBlank { "Говорите…" }
+                setTextViewText(R.id.tv_recording_text, display)
+                setFloat(R.id.tv_recording_text, "setAlpha", if (partialText.isBlank()) 0.50f else 0.92f)
+                setViewVisibility(R.id.fl_recording_submit, View.VISIBLE)
+                setOnClickPendingIntent(R.id.fl_recording_submit, voiceSubmitPi(context))
+                // Сбрасываем кольца в начальное состояние (анимация стартует сразу после)
+                for (id in intArrayOf(R.id.ring1, R.id.ring2, R.id.ring3)) {
+                    setFloat(id, "setScaleX", 0f)
+                    setFloat(id, "setScaleY", 0f)
+                    setFloat(id, "setAlpha", 0f)
+                }
+            }
+            updateAll(context, views)
+        }
+
+        /** Сброс в IDLE. */
+        fun resetToIdle(context: Context) = updateAll(context, defaultViews(context))
+
+        /** Скрывает капсулу пока открыт InputActivity (текстовый режим). */
         fun hideWidget(context: Context) {
-            val awm = AppWidgetManager.getInstance(context)
-            val ids = awm.getAppWidgetIds(ComponentName(context, VitaWidgetProvider::class.java))
-            if (ids.isEmpty()) return
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setViewVisibility(R.id.capsule, View.INVISIBLE)
             }
-            ids.forEach { awm.updateAppWidget(it, views) }
+            updateAll(context, views)
         }
 
-        /**
-         * Обновляет текст подсказки виджета (динамическая персонализация).
-         * Например: "Платёж по кредитке завтра" или "Как настроение?"
-         */
-        fun updatePrompt(context: Context, promptText: String) {
-            val awm = AppWidgetManager.getInstance(context)
-            val ids = awm.getAppWidgetIds(ComponentName(context, VitaWidgetProvider::class.java))
-            if (ids.isEmpty()) return
-            val views = defaultViews(context).apply {
-                setTextViewText(R.id.tv_prompt, promptText)
-            }
-            ids.forEach { awm.updateAppWidget(it, views) }
-        }
-
-        /**
-         * Показывает строку статуса на ~10 секунд, затем сбрасывает виджет.
-         * Вызывается из ConfirmActivity после успешного подтверждения.
-         */
+        /** Показывает строку статуса на ~10 секунд, затем сбрасывает виджет. */
         fun showStatus(context: Context, text: String) {
-            val awm = AppWidgetManager.getInstance(context)
-            val ids = awm.getAppWidgetIds(ComponentName(context, VitaWidgetProvider::class.java))
-            if (ids.isEmpty()) return
-
             val statusViews = RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
+                setViewVisibility(R.id.btn_mic, View.GONE)
+                setViewVisibility(R.id.btn_cancel_rec, View.GONE)
+                setViewVisibility(R.id.pb_preparing, View.GONE)
+                setViewVisibility(R.id.tv_recording_text, View.GONE)
+                setViewVisibility(R.id.btn_stop, View.GONE)
+                setViewVisibility(R.id.fl_recording_submit, View.GONE)
                 setViewVisibility(R.id.tv_status, View.VISIBLE)
                 setTextViewText(R.id.tv_status, text)
             }
-            ids.forEach { awm.updateAppWidget(it, statusViews) }
-
+            updateAll(context, statusViews)
             Handler(Looper.getMainLooper()).postDelayed({
-                ids.forEach { awm.updateAppWidget(it, defaultViews(context)) }
+                updateAll(context, defaultViews(context))
             }, 10_000L)
         }
 
+        fun updatePrompt(context: Context, promptText: String) {
+            updateAll(context, defaultViews(context).apply {
+                setTextViewText(R.id.tv_prompt, promptText)
+            })
+        }
+
+        // ── Хелперы ──────────────────────────────────────────────────────────
+
+        fun updateAll(context: Context, views: RemoteViews) {
+            val awm = AppWidgetManager.getInstance(context)
+            val ids = awm.getAppWidgetIds(ComponentName(context, VitaWidgetProvider::class.java))
+            ids.forEach { awm.updateAppWidget(it, views) }
+        }
+
+        fun getWidgetIds(context: Context): IntArray {
+            val awm = AppWidgetManager.getInstance(context)
+            return awm.getAppWidgetIds(ComponentName(context, VitaWidgetProvider::class.java))
+        }
+
+        private fun voiceStartPi(context: Context): PendingIntent =
+            PendingIntent.getForegroundService(
+                context, 1,
+                Intent(context, VoiceRecordingService::class.java).apply {
+                    action = VoiceRecordingService.ACTION_START
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+        private fun voiceStopPi(context: Context): PendingIntent =
+            PendingIntent.getForegroundService(
+                context, 2,
+                Intent(context, VoiceRecordingService::class.java).apply {
+                    action = VoiceRecordingService.ACTION_STOP
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+        private fun voiceSubmitPi(context: Context): PendingIntent =
+            PendingIntent.getForegroundService(
+                context, 3,
+                Intent(context, VoiceRecordingService::class.java).apply {
+                    action = VoiceRecordingService.ACTION_SUBMIT
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+        private fun textInputPi(context: Context): PendingIntent =
+            PendingIntent.getActivity(
+                context, 0,
+                Intent(context, InputActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra(InputActivity.EXTRA_MODE, InputActivity.MODE_TEXT)
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
         private fun mainPi(context: Context): PendingIntent =
             PendingIntent.getActivity(
-                context, 2,
+                context, 4,
                 Intent(context, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-
-        private fun inputPi(context: Context, recording: Boolean): PendingIntent {
-            val intent = Intent(context, InputActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                putExtra(InputActivity.EXTRA_MODE, if (recording) InputActivity.MODE_RECORDING else InputActivity.MODE_TEXT)
-            }
-            return PendingIntent.getActivity(
-                context,
-                if (recording) 1 else 0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-        }
     }
 }

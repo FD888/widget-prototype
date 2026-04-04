@@ -48,6 +48,7 @@ C-02 + C-03 → C-05
 | C-04 | Android Widget UI (все экраны Phase 1 + экстра) | 2026-04-02 | `feature/C-04-widget-ui` |
 | U-01 | UI/UX: виджет-капсула, InputActivity, флоу переводов, Mock Bank | 2026-04-02 | `feature/C-04-widget-ui` |
 | C-08 | Голосовой ввод: MediaRecorder + waveform + таймер | 2026-04-02 | `feature/C-04-widget-ui` |
+| C-04+ | Widget UX: VoiceRecordingService, пульсирующие кольца, VAD, кнопка ↑, анимация InputActivity | 2026-04-05 | `feature/C-04-widget-ui` |
 
 ---
 
