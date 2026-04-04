@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-04*
+*Последнее обновление: 2026-04-04 (контакт-резолюция)*
 
 ### Структура репозитория
 
@@ -31,8 +31,10 @@ widget-prototype/
 │       │   ├── MockBankActivity.kt         ← mock банковское приложение
 │       │   ├── BankingSession.kt           ← in-memory banking JWT (15 мин)
 │       │   ├── PhoneVerificationActivity.kt← верификация номера телефона
+│       │   ├── ContactDisambiguationActivity.kt ← bottom sheet выбора когда 2+ кандидатов
 │       │   ├── api/MockApiService.kt       ← HTTP-клиент к FastAPI
 │       │   ├── nlp/NlpService.kt           ← обёртка NLP
+│       │   ├── nlp/ContactMatcher.kt       ← нечёткий поиск по ContactsContract (склонения)
 │       │   ├── model/Models.kt             ← data-классы
 │       │   └── ui/theme/                   ← VTB-цвета, типографика
 │       ├── res/
@@ -66,6 +68,8 @@ widget-prototype/
 | Голосовой ввод (MediaRecorder + waveform) | `InputActivity.kt` | ✅ |
 | Системные интенты (alarm/timer/call/app) | `SystemIntentHandler.kt` | ✅ |
 | Выбор контакта (ContactsContract) | `ContactPickerActivity.kt` | ✅ |
+| Нечёткий поиск контакта (склонения, scoring) | `nlp/ContactMatcher.kt` | ✅ |
+| Disambiguation bottom sheet (2+ кандидатов) | `ContactDisambiguationActivity.kt` | ✅ |
 | Перевод (2 шага) | `TransferDetailsActivity.kt` | ✅ |
 | Пополнение телефона | `TopupInputActivity.kt` | ✅ |
 | Баланс | `BalanceActivity.kt` | ✅ |

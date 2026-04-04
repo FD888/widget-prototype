@@ -30,6 +30,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Верификация номера телефона (первый запуск) -->
+        <activity
+            android:name=".PhoneVerificationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita" />
+
         <!-- Выбор PIN и вход в профиль -->
         <activity
             android:name=".PinEntryActivity"
@@ -46,6 +52,7 @@
         <activity
             android:name=".InputActivity"
             android:exported="false"
+            android:taskAffinity=""
             android:theme="@style/Theme.VTBVita.BottomSheet" />
 
         <!-- Модал подтверждения операции (BottomSheet-стиль) -->
@@ -75,6 +82,12 @@
         <!-- Шаг 2 флоу перевода: детали (сумма, банк, счёт) -->
         <activity
             android:name=".TransferDetailsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita.BottomSheet" />
+
+        <!-- Выбор из нескольких кандидатов (NLP нашёл 2+ совпадений) -->
+        <activity
+            android:name=".ContactDisambiguationActivity"
             android:exported="false"
             android:theme="@style/Theme.VTBVita.BottomSheet" />
 

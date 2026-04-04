@@ -151,7 +151,8 @@ private fun InputOverlay(
     startInRecordingMode: Boolean,
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
-    onTransfer: (String?, Double?) -> Unit,
+    onTransfer: (name: String?, phone: String?, bankDisplayName: String?, amount: Double?) -> Unit,
+    onAmbiguousTransfer: (List<ContactCandidate>, Double?) -> Unit,
     onTopup: (String?, Double?) -> Unit,
     onConfirm: (ConfirmationData) -> Unit
 ) {
@@ -363,7 +364,8 @@ private fun InputOverlay(
                                 submitText(
                                     text, context, scope, onDismiss,
                                     onBalance = { requirePin(onBalance) },
-                                    onTransfer = { r, a -> requirePin { onTransfer(r, a) } },
+                                    onTransfer = { n, p, b, a -> requirePin { onTransfer(n, p, b, a) } },
+                                    onAmbiguousTransfer = { candidates, a -> requirePin { onAmbiguousTransfer(candidates, a) } },
                                     onTopup = { p, a -> requirePin { onTopup(p, a) } },
                                     onConfirm = onConfirm,
                                     setLoading = { isLoading = it },
@@ -433,7 +435,7 @@ private fun InputOverlay(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTransfer(null, null) } }
+                    QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTransfer(null, null, null, null) } }
                     QuickChip("Баланс", Modifier.weight(1f), enabled = !isLoading) { requirePin(onBalance) }
                     QuickChip("Пополнить", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTopup(null, null) } }
                 }
@@ -507,7 +509,8 @@ private fun submitText(
     scope: kotlinx.coroutines.CoroutineScope,
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
-    onTransfer: (String? /* recipient */, Double? /* amount */) -> Unit,
+    onTransfer: (name: String?, phone: String?, bankDisplayName: String?, amount: Double?) -> Unit,
+    onAmbiguousTransfer: (List<ContactCandidate>, Double?) -> Unit,
     onTopup: (String? /* phone */, Double? /* amount */) -> Unit,
     onConfirm: (ConfirmationData) -> Unit,
     setLoading: (Boolean) -> Unit,
@@ -530,7 +533,26 @@ private fun submitText(
         when (parsed.intent) {
             "balance" -> onBalance()
 
-            "transfer" -> onTransfer(parsed.recipient, parsed.amount)
+            "transfer" -> {
+                val recipientRaw = parsed.recipient
+                if (recipientRaw != null) {
+                    val candidates = ContactMatcher.search(recipientRaw, context)
+                    when {
+                        candidates.isEmpty() ->
+                            // Контакт не найден — открываем полный список с предзаполненной суммой
+                            onTransfer(null, null, null, parsed.amount)
+                        ContactMatcher.isHighConfidence(candidates) -> {
+                            val c = candidates[0]
+                            onTransfer(c.displayName, c.phone, c.bankDisplayName, parsed.amount)
+                        }
+                        else ->
+                            // Несколько кандидатов — показываем выбор
+                            onAmbiguousTransfer(candidates, parsed.amount)
+                    }
+                } else {
+                    onTransfer(null, null, null, parsed.amount)
+                }
+            }
 
             "topup" -> onTopup(parsed.phone, parsed.amount)
 
