@@ -29,21 +29,28 @@ class BalanceActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BankingSession.restoreFromIntent(intent)
         setContent {
             VTBVitaTheme {
                 BalanceBottomSheet(onDismiss = { finish() })
             }
         }
     }
+
+    override fun onStop() {
+        super.onStop()
+        finish()
+    }
 }
 
 @Composable
 private fun BalanceBottomSheet(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var accounts by remember { mutableStateOf<List<AccountInfo>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        runCatching { MockApiService.getBalance() }
+        runCatching { MockApiService.getBalance(context) }
             .onSuccess { accounts = it }
             .onFailure { e -> error = e.message ?: "Ошибка загрузки" }
     }

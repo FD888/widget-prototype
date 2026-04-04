@@ -28,13 +28,27 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Mock API base URL.
-        // Для реального устройства задай в local.properties:
-        //   MOCK_API_BASE_URL=http://<IP_ноутбука>:8000
-        // Для эмулятора значение по умолчанию (10.0.2.2) подходит без изменений.
+        //
+        // По умолчанию используется production-сервер (https://vtb.vibefounder.ru).
+        // Для локальной разработки создай файл android/local.properties и добавь строку:
+        //
+        //   Эмулятор (AVD):
+        //     MOCK_API_BASE_URL=http://10.0.2.2:8000
+        //
+        //   Реальное устройство по USB:
+        //     1. Запусти сервер: cd ml/mock_api && uvicorn main:app --host 127.0.0.1 --port 8000
+        //     2. Пробрось порт:  adb reverse tcp:8000 tcp:8000
+        //     3. MOCK_API_BASE_URL=http://localhost:8000
+        //
+        //   Реальное устройство по Wi-Fi (без USB):
+        //     MOCK_API_BASE_URL=http://<IP_ноутбука_в_сети>:8000
+        //     (сервер запускать с --host 0.0.0.0)
+        //
+        // local.properties добавлен в .gitignore — ключи и URL не попадут в репо.
         buildConfigField(
             "String",
             "MOCK_API_BASE_URL",
-            "\"${localProps.getProperty("MOCK_API_BASE_URL", "http://10.0.2.2:8000")}\""
+            "\"${localProps.getProperty("MOCK_API_BASE_URL", "https://vtb.vibefounder.ru")}\""
         )
     }
 
@@ -67,6 +81,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

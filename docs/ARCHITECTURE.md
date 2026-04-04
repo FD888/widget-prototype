@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-03*
+*Последнее обновление: 2026-04-04*
 
 ### Структура репозитория
 
@@ -75,7 +75,7 @@ widget-prototype/
 | Сессия (login/logout) | `SessionManager.kt` | ✅ |
 | Выбор профиля | `MainActivity.kt` | ✅ |
 | PIN-вход | `PinEntryActivity.kt` | ✅ |
-| Mock банковское приложение | `MockBankActivity.kt` | ✅ |
+| Mock банковское приложение (5 Compose-экранов) | `MockBankActivity.kt` | ✅ |
 | Mock API (FastAPI) | `ml/mock_api/main.py` | ✅ |
 | NLP intent parsing | `ml/` (C-02) | 🔄 in progress (Яна) |
 
@@ -91,10 +91,12 @@ widget-prototype/
 | 2026-03-31 | InputActivity: прозрачная тема, overlay на 70% экрана | Иллюзия «выплывания» без смены экрана |
 | 2026-03-31 | hideWidget в onCreate, restoreWidget в onPause | onDestroy ненадёжен |
 | 2026-04-01 | SessionManager (SharedPreferences) | Персонализация виджета + контроль доступа |
-| 2026-04-02 | adb reverse tcp:8000 tcp:8000 для USB-тоннеля | Mock API недоступен с устройства без тоннеля |
+| 2026-04-02 | adb reverse tcp:8000 tcp:8000 для USB-тоннеля | Нужен только при локальном запуске API; с 2026-04-03 API задеплоен на vtb.vibefounder.ru — тоннель не нужен |
 | 2026-04-03 | Двухуровневая JWT-авторизация: app_token (30д) + banking_token (15мин) | PIN хранится только на сервере; banking_token живёт только в памяти (BankingSession) |
 | 2026-04-03 | BankingSession.clear() в InputActivity.onPause() | Каждый выход из виджета требует повторного ввода PIN |
 | 2026-04-03 | MainActivity роутинг: если persona сохранена → PinEntryActivity напрямую | Не нужно заново выбирать профиль после перезапуска приложения |
+| 2026-04-04 | BankingSession.putInIntent() / restoreFromIntent() — токен передаётся в дочерние Activity через Intent | onPause() очищает BankingSession до того, как дочерняя Activity делает API-запрос; Intent гарантирует передачу |
+| 2026-04-04 | MockBankActivity: реальные Compose-экраны вместо JPEG-скриншотов | Демо выглядит как живое приложение; добавлена зависимость material-icons-extended |
 
 ---
 

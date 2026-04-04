@@ -47,6 +47,8 @@ import androidx.core.content.ContextCompat
 import com.vtbvita.widget.BankingSession
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.ConfirmationData
+import com.vtbvita.widget.nlp.ContactCandidate
+import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import com.vtbvita.widget.ui.theme.VtbBlue
 import com.vtbvita.widget.ui.theme.VtbBlueMid
@@ -97,26 +99,45 @@ class InputActivity : ComponentActivity() {
                     startInRecordingMode = startMode == MODE_RECORDING,
                     onDismiss = { finish() },
                     onBalance = {
-                        startActivity(
-                            android.content.Intent(this, BalanceActivity::class.java)
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
+                        val i = android.content.Intent(this, BalanceActivity::class.java)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     },
-                    onTransfer = { recipient, amount ->
-                        if (recipient != null) {
-                            startActivity(TransferDetailsActivity.newIntent(this, recipient, "", amount ?: 0.0))
+                    onTransfer = { name, phone, bankDisplayName, amount ->
+                        val i = if (name != null || phone != null) {
+                            TransferDetailsActivity.newIntent(
+                                this,
+                                recipientName = name ?: "",
+                                recipientPhone = phone ?: "",
+                                amount = amount ?: 0.0,
+                                bankDisplayName = bankDisplayName ?: ""
+                            )
                         } else {
-                            startActivity(ContactPickerActivity.newIntent(this, amount))
+                            ContactPickerActivity.newIntent(this, amount)
                         }
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
+                        finish()
+                    },
+                    onAmbiguousTransfer = { candidates, amount ->
+                        ContactDisambiguationActivity.pendingCandidates = candidates
+                        val i = ContactDisambiguationActivity.newIntent(this, amount)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     },
                     onTopup = { phone, amount ->
-                        startActivity(TopupInputActivity.newIntent(this, phone ?: "", amount ?: 0.0))
+                        val i = TopupInputActivity.newIntent(this, phone ?: "", amount ?: 0.0)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     },
                     onConfirm = { data ->
-                        startActivity(ConfirmActivity.newIntent(this, data))
+                        val i = ConfirmActivity.newIntent(this, data)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     }
                 )

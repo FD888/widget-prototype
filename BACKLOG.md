@@ -69,3 +69,5 @@ C-02 + C-03 → C-05
 | 2026-04-02 | Переименование Pulse → Vita | Финальное название продукта |
 | 2026-04-03 | Двухуровневая JWT-авторизация: app_token (30д) + banking JWT (15мин) | PIN не хранится на клиенте — только серверная валидация через /auth |
 | 2026-04-03 | BankingSession.clear() в onPause → PIN при каждом открытии виджета | Безопасность: виджет не должен оставлять active banking-сессию |
+| 2026-04-04 | BankingSession.putInIntent/restoreFromIntent — передача токена в дочерние Activity | onPause очищает BankingSession раньше, чем дочерняя Activity вызывает API |
+| 2026-04-04 | MockBankActivity: 5 реальных Compose-экранов вместо JPEG-скриншотов | Демо выглядит живым; Главная загружает реальные счета через /balance |

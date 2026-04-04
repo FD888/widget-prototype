@@ -35,6 +35,7 @@ class TransferDetailsActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_RECIPIENT_NAME = "recipient_name"
         private const val EXTRA_RECIPIENT_PHONE = "recipient_phone"
+        private const val EXTRA_BANK_DISPLAY_NAME = "bank_display_name"
         private const val EXTRA_AMOUNT = "amount"          // 0.0 = пусто (ввод вручную)
         private const val EXTRA_BANK = "bank"              // "" = пусто
 
@@ -43,20 +44,29 @@ class TransferDetailsActivity : ComponentActivity() {
             recipientName: String,
             recipientPhone: String,
             amount: Double = 0.0,
-            bank: String = ""
+            bank: String = "",
+            bankDisplayName: String = ""
         ): Intent = Intent(context, TransferDetailsActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(EXTRA_RECIPIENT_NAME, recipientName)
             putExtra(EXTRA_RECIPIENT_PHONE, recipientPhone)
+            putExtra(EXTRA_BANK_DISPLAY_NAME, bankDisplayName)
             putExtra(EXTRA_AMOUNT, amount)
             putExtra(EXTRA_BANK, bank)
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        finish()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BankingSession.restoreFromIntent(intent)
         val recipientName = intent.getStringExtra(EXTRA_RECIPIENT_NAME) ?: ""
         val recipientPhone = intent.getStringExtra(EXTRA_RECIPIENT_PHONE) ?: ""
+        val bankDisplayName = intent.getStringExtra(EXTRA_BANK_DISPLAY_NAME) ?: ""
         val prefillAmount = intent.getDoubleExtra(EXTRA_AMOUNT, 0.0)
         val prefillBank = intent.getStringExtra(EXTRA_BANK) ?: ""
 
@@ -65,6 +75,7 @@ class TransferDetailsActivity : ComponentActivity() {
                 TransferDetailsSheet(
                     recipientName = recipientName,
                     recipientPhone = recipientPhone,
+                    bankDisplayName = bankDisplayName,
                     prefillAmount = prefillAmount,
                     prefillBank = prefillBank,
                     onDismiss = { finish() },
@@ -85,11 +96,13 @@ private val BANKS = listOf("ВТБ", "Сбербанк", "Тинькофф", "А
 private fun TransferDetailsSheet(
     recipientName: String,
     recipientPhone: String,
+    bankDisplayName: String,
     prefillAmount: Double,
     prefillBank: String,
     onDismiss: () -> Unit,
     onSuccess: (String) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var amountText by remember {
         mutableStateOf(if (prefillAmount > 0.0) prefillAmount.toLong().toString() else "")
@@ -105,7 +118,7 @@ private fun TransferDetailsSheet(
 
     // Загружаем счета
     LaunchedEffect(Unit) {
-        runCatching { MockApiService.getBalance() }
+        runCatching { MockApiService.getBalance(context) }
             .onSuccess { accs ->
                 accounts = accs
                 selectedAccountId = accs.firstOrNull()?.id ?: "debit"
@@ -157,6 +170,13 @@ private fun TransferDetailsSheet(
                 DetailRow("Получатель", recipientName.ifBlank { recipientPhone })
                 if (recipientName.isNotBlank() && recipientPhone.isNotBlank()) {
                     DetailRow("Телефон", recipientPhone)
+                }
+                if (bankDisplayName.isNotBlank()) {
+                    DetailRow(
+                        "Имя в банке",
+                        bankDisplayName,
+                        valueColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 HorizontalDivider(thickness = 0.5.dp)
@@ -230,8 +250,9 @@ private fun TransferDetailsSheet(
                                     MockApiService.command(
                                         intent = "transfer",
                                         amount = amt,
-                                        recipient = recipientName.ifBlank { recipientPhone },
-                                        phone = null
+                                        recipient = recipientPhone.ifBlank { recipientName },
+                                        phone = null,
+                                        context = context
                                     )
                                 }.onSuccess { data ->
                                     // confirm сразу через API
@@ -239,7 +260,8 @@ private fun TransferDetailsSheet(
                                         MockApiService.confirm(
                                             transactionId = data.transactionId,
                                             sourceAccountId = selectedAccountId,
-                                            selectedBank = selectedBank
+                                            selectedBank = selectedBank,
+                                            context = context
                                         )
                                     }.onSuccess { result ->
                                         onSuccess("✓ ${result.message}")
