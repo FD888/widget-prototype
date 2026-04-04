@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-04 (контакт-резолюция)*
+*Последнее обновление: 2026-04-04*
 
 ### Структура репозитория
 
@@ -33,8 +33,10 @@ widget-prototype/
 │       │   ├── PhoneVerificationActivity.kt← верификация номера телефона
 │       │   ├── ContactDisambiguationActivity.kt ← bottom sheet выбора когда 2+ кандидатов
 │       │   ├── api/MockApiService.kt       ← HTTP-клиент к FastAPI
-│       │   ├── nlp/NlpService.kt           ← обёртка NLP
+│       │   ├── VoiceStreamingRecorder.kt   ← WebSocket PCM-стриминг на сервер (16kHz/16-bit)
+│       │   ├── nlp/NlpService.kt           ← HTTP-клиент к /parse (object, не interface)
 │       │   ├── nlp/ContactMatcher.kt       ← нечёткий поиск по ContactsContract (склонения)
+│       │   ├── nlp/ContactMemory.kt        ← SharedPreferences: история выборов → boost score
 │       │   ├── model/Models.kt             ← data-классы
 │       │   └── ui/theme/                   ← VTB-цвета, типографика
 │       ├── res/
@@ -70,6 +72,8 @@ widget-prototype/
 | Выбор контакта (ContactsContract) | `ContactPickerActivity.kt` | ✅ |
 | Нечёткий поиск контакта (склонения, scoring) | `nlp/ContactMatcher.kt` | ✅ |
 | Disambiguation bottom sheet (2+ кандидатов) | `ContactDisambiguationActivity.kt` | ✅ |
+| Обучение на выборах пользователя (boost score) | `nlp/ContactMemory.kt` | ✅ |
+| WebSocket PCM-стриминг (голос → сервер → SpeechKit) | `VoiceStreamingRecorder.kt` | ✅ |
 | Перевод (2 шага) | `TransferDetailsActivity.kt` | ✅ |
 | Пополнение телефона | `TopupInputActivity.kt` | ✅ |
 | Баланс | `BalanceActivity.kt` | ✅ |

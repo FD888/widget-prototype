@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vtbvita.widget.nlp.ContactCandidate
 import com.vtbvita.widget.nlp.ContactMatcher
+import com.vtbvita.widget.nlp.ContactMemory
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import com.vtbvita.widget.ui.theme.VtbBlue
 import com.vtbvita.widget.ui.theme.VtbBluePale
@@ -43,9 +44,14 @@ class ContactDisambiguationActivity : ComponentActivity() {
         /** Временное хранилище кандидатов — устанавливается перед startActivity. */
         var pendingCandidates: List<ContactCandidate> = emptyList()
 
+        /**
+         * Исходный recipient_raw из NLP (напр. "маме") — нужен для записи выбора в ContactMemory.
+         * Устанавливается одновременно с pendingCandidates.
+         */
+        var pendingRecipientRaw: String = ""
+
         fun newIntent(context: Context, amount: Double? = null): Intent =
             Intent(context, ContactDisambiguationActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 amount?.let { putExtra(EXTRA_AMOUNT, it) }
             }
     }
@@ -61,12 +67,19 @@ class ContactDisambiguationActivity : ComponentActivity() {
         val amount = if (intent.hasExtra(EXTRA_AMOUNT))
             intent.getDoubleExtra(EXTRA_AMOUNT, 0.0) else null
         val candidates = pendingCandidates
+        val recipientRaw = pendingRecipientRaw
+
+        // Узнаём сколько раз выбирали каждый контакт (для метки "Недавно")
+        val pickCounts = ContactMemory.getPickCounts(recipientRaw, this)
 
         setContent {
             VTBVitaTheme {
                 DisambiguationSheet(
                     candidates = candidates,
+                    pickCounts = pickCounts,
                     onContactSelected = { contact ->
+                        // Записываем выбор — в следующий раз score будет выше
+                        ContactMemory.recordPick(recipientRaw, contact.phone, this)
                         startActivity(
                             TransferDetailsActivity.newIntent(
                                 this,
@@ -95,6 +108,7 @@ class ContactDisambiguationActivity : ComponentActivity() {
 @Composable
 private fun DisambiguationSheet(
     candidates: List<ContactCandidate>,
+    pickCounts: Map<String, Int>,
     onContactSelected: (ContactCandidate) -> Unit,
     onOtherContact: () -> Unit,
     onDismiss: () -> Unit
@@ -146,7 +160,12 @@ private fun DisambiguationSheet(
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp)
                 ) {
                     items(candidates) { candidate ->
-                        CandidateRow(candidate = candidate, onClick = { onContactSelected(candidate) })
+                        val pickCount = pickCounts[candidate.phone] ?: 0
+                        CandidateRow(
+                            candidate = candidate,
+                            pickCount = pickCount,
+                            onClick = { onContactSelected(candidate) }
+                        )
                         HorizontalDivider(thickness = 0.5.dp)
                     }
                     item {
@@ -167,7 +186,7 @@ private fun DisambiguationSheet(
 }
 
 @Composable
-private fun CandidateRow(candidate: ContactCandidate, onClick: () -> Unit) {
+private fun CandidateRow(candidate: ContactCandidate, pickCount: Int, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -190,7 +209,17 @@ private fun CandidateRow(candidate: ContactCandidate, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(candidate.displayName, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(candidate.displayName, style = MaterialTheme.typography.bodyLarge)
+                if (pickCount > 0) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (pickCount >= ContactMemory.AUTO_RESOLVE_AT) "★" else "↑",
+                        fontSize = 11.sp,
+                        color = VtbBlue
+                    )
+                }
+            }
             Text(
                 ContactMatcher.maskPhone(candidate.phone),
                 style = MaterialTheme.typography.bodySmall,

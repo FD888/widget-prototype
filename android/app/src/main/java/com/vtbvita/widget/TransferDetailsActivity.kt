@@ -13,6 +13,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,6 +40,7 @@ class TransferDetailsActivity : ComponentActivity() {
         private const val EXTRA_BANK_DISPLAY_NAME = "bank_display_name"
         private const val EXTRA_AMOUNT = "amount"          // 0.0 = пусто (ввод вручную)
         private const val EXTRA_BANK = "bank"              // "" = пусто
+        private const val EXTRA_HAS_CONTACT_PICKER = "has_contact_picker"
 
         fun newIntent(
             context: Context,
@@ -45,14 +48,15 @@ class TransferDetailsActivity : ComponentActivity() {
             recipientPhone: String,
             amount: Double = 0.0,
             bank: String = "",
-            bankDisplayName: String = ""
+            bankDisplayName: String = "",
+            hasContactPicker: Boolean = false
         ): Intent = Intent(context, TransferDetailsActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(EXTRA_RECIPIENT_NAME, recipientName)
             putExtra(EXTRA_RECIPIENT_PHONE, recipientPhone)
             putExtra(EXTRA_BANK_DISPLAY_NAME, bankDisplayName)
             putExtra(EXTRA_AMOUNT, amount)
             putExtra(EXTRA_BANK, bank)
+            putExtra(EXTRA_HAS_CONTACT_PICKER, hasContactPicker)
         }
     }
 
@@ -69,6 +73,20 @@ class TransferDetailsActivity : ComponentActivity() {
         val bankDisplayName = intent.getStringExtra(EXTRA_BANK_DISPLAY_NAME) ?: ""
         val prefillAmount = intent.getDoubleExtra(EXTRA_AMOUNT, 0.0)
         val prefillBank = intent.getStringExtra(EXTRA_BANK) ?: ""
+        val hasContactPicker = intent.getBooleanExtra(EXTRA_HAS_CONTACT_PICKER, false)
+
+        // FSM-навигация назад: если ContactPickerActivity уже в стеке — просто finish(),
+        // иначе (NLP-путь) — запускаем ContactPickerActivity сами.
+        val onDismiss: () -> Unit = if (hasContactPicker) {
+            { finish() }
+        } else {
+            {
+                val i = ContactPickerActivity.newIntent(this, prefillAmount)
+                BankingSession.putInIntent(i)
+                startActivity(i)
+                finish()
+            }
+        }
 
         setContent {
             VTBVitaTheme {
@@ -78,7 +96,7 @@ class TransferDetailsActivity : ComponentActivity() {
                     bankDisplayName = bankDisplayName,
                     prefillAmount = prefillAmount,
                     prefillBank = prefillBank,
-                    onDismiss = { finish() },
+                    onDismiss = onDismiss,
                     onSuccess = { msg ->
                         VitaWidgetProvider.showStatus(applicationContext, msg)
                         finish()
@@ -163,7 +181,18 @@ private fun TransferDetailsSheet(
                         .align(Alignment.CenterHorizontally)
                 )
 
-                Text("Перевод", style = MaterialTheme.typography.titleLarge)
+                // Заголовок с кнопкой назад
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Назад к контактам",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text("Перевод", style = MaterialTheme.typography.titleLarge)
+                }
                 HorizontalDivider()
 
                 // Получатель (зафиксирован)

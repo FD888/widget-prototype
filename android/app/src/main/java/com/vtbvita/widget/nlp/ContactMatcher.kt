@@ -20,9 +20,13 @@ data class ContactCandidate(
  */
 object ContactMatcher {
 
+    // Падежные окончания — срезаем, чтобы "маме" → "мам", "коноплеву" → "коноплев"
     private val ENDINGS = Regex("(ого|его|ому|ему|ой|ей|ом|ем|ью|ую|ю|я|е|у|а|ы|и)$")
 
-    /** Ищет кандидатов в книге контактов. Возвращает пустой список если нет разрешения. */
+    /**
+     * Ищет кандидатов в книге контактов.
+     * Применяет буст из ContactMemory — предыдущие выборы пользователя повышают score.
+     */
     fun search(rawQuery: String, context: Context): List<ContactCandidate> {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS)
             != PackageManager.PERMISSION_GRANTED
@@ -31,10 +35,11 @@ object ContactMatcher {
         val tokens = tokenize(rawQuery)
         if (tokens.isEmpty()) return emptyList()
 
-        val raw = queryByTokens(context, tokens)
+        // Грузим все контакты и скорим в Kotlin — избегаем проблем с LIKE и кириллицей
+        val allContacts = queryAllContacts(context)
 
         val best = mutableMapOf<String, Pair<RawContact, Float>>()
-        for (c in raw) {
+        for (c in allContacts) {
             val s = score(c, tokens)
             if (s >= 0.4f) {
                 val prev = best[c.phone]
@@ -42,16 +47,20 @@ object ContactMatcher {
             }
         }
 
+        // Применяем буст из истории выборов
+        val pickCounts = ContactMemory.getPickCounts(rawQuery, context)
+
         return best.values
-            .sortedByDescending { it.second }
             .map { (c, s) ->
+                val boost = ContactMemory.scoreBoost(pickCounts[c.phone] ?: 0)
                 ContactCandidate(
                     displayName = c.name,
                     phone = c.phone,
                     bankDisplayName = makeBankName(c.name),
-                    score = s
+                    score = (s + boost).coerceAtMost(1f)
                 )
             }
+            .sortedByDescending { it.score }
     }
 
     /** True если первый кандидат явно лучше остальных → однозначное совпадение. */
@@ -87,53 +96,67 @@ object ContactMatcher {
         return if (stripped.length >= 2) stripped else word
     }
 
-    private fun queryByTokens(context: Context, tokens: List<String>): List<RawContact> {
-        val seen = mutableSetOf<String>()
+    /** Загружает все контакты телефона за один запрос (без фильтрации). */
+    private fun queryAllContacts(context: Context): List<RawContact> {
         val result = mutableListOf<RawContact>()
+        val seen = mutableSetOf<String>()
+        val cursor = context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            ),
+            null, null,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+        ) ?: return result
 
-        for (token in tokens) {
-            val cursor = context.contentResolver.query(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    ContactsContract.CommonDataKinds.Phone.NUMBER
-                ),
-                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
-                arrayOf("%$token%"),
-                null
-            ) ?: continue
-
-            cursor.use {
-                val ni = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                val pi = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
-                while (it.moveToNext()) {
-                    val name = it.getString(ni) ?: continue
-                    val phone = it.getString(pi)?.replace(Regex("[\\s\\-()]"), "") ?: continue
-                    if (seen.add("$name|$phone")) result.add(RawContact(name, phone))
-                }
+        cursor.use {
+            val ni = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val pi = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            while (it.moveToNext()) {
+                val name = it.getString(ni) ?: continue
+                val phone = it.getString(pi)?.replace(Regex("[\\s\\-()]"), "") ?: continue
+                if (seen.add("$name|$phone")) result.add(RawContact(name, phone))
             }
         }
         return result
     }
 
+    /**
+     * Jaccard-подобный scoring: matched_pairs / max(query_tokens, contact_parts).
+     *
+     * Примеры (запрос "маме" → ["мам"]):
+     *   "Мама"       → 1/max(1,1) = 1.0
+     *   "Мама Саши"  → 1/max(1,2) = 0.5   ← правильно разрешается как неоднозначное
+     *   "Мама Игоря" → 1/max(1,2) = 0.5
+     *
+     * Примеры (запрос "маше коноплевой" → ["маш","коноплев"]):
+     *   "Маша Коноплева" → 2/max(2,2) = 1.0
+     *   "Маша"           → 1/max(2,1) = 0.5
+     */
     private fun score(contact: RawContact, tokens: List<String>): Float {
         val parts = contact.name.lowercase().replace('ё', 'е')
             .split(Regex("\\s+"))
             .map { stripEndings(it) }
+            .filter { it.length >= 2 }
 
-        var total = 0f
-        for ((qi, token) in tokens.withIndex()) {
+        if (parts.isEmpty()) return 0f
+
+        var matchedPairs = 0
+        val usedParts = mutableSetOf<Int>()
+
+        for (token in tokens) {
             for ((pi, part) in parts.withIndex()) {
+                if (pi in usedParts) continue
                 if (part.contains(token) || token.contains(part)) {
-                    total += when {
-                        qi == 0 && pi == 0 -> 0.5f  // первое слово запроса = первое слово имени
-                        qi == 1 && pi == 1 -> 0.4f  // второе слово запроса = второе слово имени
-                        else -> 0.1f
-                    }
+                    matchedPairs++
+                    usedParts.add(pi)
+                    break
                 }
             }
         }
-        return total.coerceAtMost(1f)
+
+        return matchedPairs.toFloat() / maxOf(tokens.size, parts.size).toFloat()
     }
 
     /** "Паша Коноплев СПБГУ" → "Паша К."  |  "мама" → "Клиент ВТБ" */

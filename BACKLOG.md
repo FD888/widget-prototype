@@ -73,3 +73,6 @@ C-02 + C-03 → C-05
 | 2026-04-04 | MockBankActivity: 5 реальных Compose-экранов вместо JPEG-скриншотов | Демо выглядит живым; Главная загружает реальные счета через /balance |
 | 2026-04-04 | ContactMatcher: нечёткий поиск + scoring (0.8/0.3 порог однозначности) | "паше коноплеву" → токены → LIKE-запрос → scoring; контакты не покидают телефон |
 | 2026-04-04 | TransferDetailsActivity: слать номер телефона в /command вместо имени | Сервер ищет по _PHONE_INDEX — надёжнее чем по имени с дательным падежом |
+| 2026-04-04 | ContactMatcher scoring: Jaccard matched/max(tokens,parts) вместо fixed weights | "мама" (1 слово) → 1.0 vs "мама Саши" (2 слова) → 0.5; gap 0.5 ≥ 0.3 → auto-resolve |
+| 2026-04-04 | ContactMemory: boost score на основе истории выборов (count≥3 → +0.5 → auto-resolve) | Позволяет виджету обучаться на предпочтениях пользователя без сервера |
+| 2026-04-04 | VoiceStreamingRecorder: WebSocket + PCM 16kHz → Яндекс SpeechKit через прокси-сервер | Потоковый STT вместо batch записи — partial/final результаты в реальном времени |

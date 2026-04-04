@@ -2,10 +2,9 @@ package com.vtbvita.widget
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.MediaRecorder
-import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.compose.runtime.DisposableEffect
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -32,15 +31,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -52,12 +50,10 @@ import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import com.vtbvita.widget.ui.theme.VtbBlue
 import com.vtbvita.widget.ui.theme.VtbBlueMid
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
-import kotlin.math.sin
-import kotlin.math.abs
 
 class InputActivity : ComponentActivity() {
 
@@ -84,6 +80,7 @@ class InputActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BankingSession.clear()  // сбрасываем сессию от предыдущих флоу (ContactPicker/TransferDetails не чистят)
         val startMode = intent.getStringExtra(EXTRA_MODE) ?: MODE_TEXT
         window.setSoftInputMode(
             if (startMode == MODE_RECORDING)
@@ -100,7 +97,6 @@ class InputActivity : ComponentActivity() {
                     onDismiss = { finish() },
                     onBalance = {
                         val i = android.content.Intent(this, BalanceActivity::class.java)
-                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                         BankingSession.putInIntent(i)
                         startActivity(i)
                         finish()
@@ -121,8 +117,9 @@ class InputActivity : ComponentActivity() {
                         startActivity(i)
                         finish()
                     },
-                    onAmbiguousTransfer = { candidates, amount ->
+                    onAmbiguousTransfer = { candidates, recipientRaw, amount ->
                         ContactDisambiguationActivity.pendingCandidates = candidates
+                        ContactDisambiguationActivity.pendingRecipientRaw = recipientRaw
                         val i = ContactDisambiguationActivity.newIntent(this, amount)
                         BankingSession.putInIntent(i)
                         startActivity(i)
@@ -152,7 +149,7 @@ private fun InputOverlay(
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
     onTransfer: (name: String?, phone: String?, bankDisplayName: String?, amount: Double?) -> Unit,
-    onAmbiguousTransfer: (List<ContactCandidate>, Double?) -> Unit,
+    onAmbiguousTransfer: (List<ContactCandidate>, String /* recipientRaw */, Double?) -> Unit,
     onTopup: (String?, Double?) -> Unit,
     onConfirm: (ConfirmationData) -> Unit
 ) {
@@ -162,7 +159,6 @@ private fun InputOverlay(
     var errorMsg by remember { mutableStateOf("") }
     // Инициализируем сразу — нет мигания текстового режима при открытии через микрофон
     var isRecording by remember { mutableStateOf(startInRecordingMode) }
-    var recordingSeconds by remember { mutableStateOf(0) }
     val focusRequester = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -179,20 +175,60 @@ private fun InputOverlay(
         }
     }
 
-    // Запись
-    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
-    var recordingFile by remember { mutableStateOf<File?>(null) }
-    var amplitudes by remember { mutableStateOf(List(30) { 0f }) }
+    // STT streaming
+    var streamingRecorder by remember { mutableStateOf<VoiceStreamingRecorder?>(null) }
+    var partialText by remember { mutableStateOf("") }
+    var voiceAmplitude by remember { mutableStateOf(0.08f) }
+
+    // Освобождаем ресурсы при уходе из composable
+    DisposableEffect(Unit) {
+        onDispose { streamingRecorder?.stop() }
+    }
+
+    fun discardRecording() {
+        streamingRecorder?.stop()
+        streamingRecorder = null
+        isRecording = false
+        partialText = ""
+    }
+
+    fun submitVoice(voiceText: String) {
+        if (voiceText.isBlank() || isLoading) return
+        errorMsg = ""
+        submitText(
+            voiceText, context, scope, onDismiss,
+            onBalance    = { requirePin(onBalance) },
+            onTransfer   = { n, p, b, a -> requirePin { onTransfer(n, p, b, a) } },
+            onAmbiguousTransfer = { candidates, raw, a -> requirePin { onAmbiguousTransfer(candidates, raw, a) } },
+            onTopup      = { p, a -> requirePin { onTopup(p, a) } },
+            onConfirm    = onConfirm,
+            setLoading   = { isLoading = it },
+            onError      = { errorMsg = it }
+        )
+    }
+
+    fun startStreaming() {
+        val rec = VoiceStreamingRecorder(
+            onPartial = { t -> scope.launch(Dispatchers.Main) { partialText = t } },
+            onFinal   = { t -> scope.launch(Dispatchers.Main) {
+                val captured = if (t.isNotBlank()) t else partialText
+                discardRecording()
+                if (captured.isNotBlank()) submitVoice(captured) else onDismiss()
+            }},
+            onError   = { msg -> scope.launch(Dispatchers.Main) {
+                discardRecording()
+                errorMsg = msg
+            }}
+        )
+        streamingRecorder = rec
+        rec.start(scope)
+        isRecording = true
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            val result = startRecording(context)
-            recorder = result.first
-            recordingFile = result.second
-            isRecording = true
-        }
+        if (granted) startStreaming()
     }
 
     // Автозапуск записи если открыли через кнопку микрофона
@@ -203,10 +239,7 @@ private fun InputOverlay(
                 context, Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
             if (hasPermission) {
-                val result = startRecording(context)
-                recorder = result.first
-                recordingFile = result.second
-                isRecording = true
+                startStreaming()
             } else {
                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
@@ -216,32 +249,16 @@ private fun InputOverlay(
         }
     }
 
-    // Полинг амплитуды + таймер пока идёт запись
+    // Полинг амплитуды для анимации ripple-колец
     LaunchedEffect(isRecording) {
         if (isRecording) {
-            recordingSeconds = 0
-            var tickMs = 0L
             while (isActive && isRecording) {
-                val raw = recorder?.maxAmplitude?.toFloat() ?: 0f
-                val norm = (raw / 32767f).coerceIn(0.08f, 1f)
-                amplitudes = amplitudes.drop(1) + norm
+                voiceAmplitude = streamingRecorder?.amplitude ?: 0.08f
                 delay(80)
-                tickMs += 80
-                if (tickMs >= 1000) { recordingSeconds++; tickMs = 0 }
             }
         } else {
-            amplitudes = List(30) { 0f }
-            recordingSeconds = 0
+            voiceAmplitude = 0.08f
         }
-    }
-
-    fun stopAndDiscard() {
-        try { recorder?.stop() } catch (_: Exception) {}
-        try { recorder?.release() } catch (_: Exception) {}
-        recorder = null
-        recordingFile?.delete()
-        recordingFile = null
-        isRecording = false
     }
 
     BoxWithConstraints(
@@ -252,7 +269,7 @@ private fun InputOverlay(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {
-                    if (isRecording) stopAndDiscard()
+                    if (isRecording) discardRecording()
                     onDismiss()
                 }
             )
@@ -289,7 +306,7 @@ private fun InputOverlay(
                             .background(Color(0xFFD32F2F), CircleShape)
                             .clip(CircleShape)
                             .clickable {
-                                stopAndDiscard()
+                                discardRecording()
                                 onDismiss()
                             },
                         contentAlignment = Alignment.Center
@@ -302,48 +319,74 @@ private fun InputOverlay(
                         )
                     }
 
-                    Spacer(Modifier.width(8.dp))
-
-                    // Таймер
-                    Text(
-                        text = "%d:%02d".format(recordingSeconds / 60, recordingSeconds % 60),
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 13.sp,
-                        modifier = Modifier.width(32.dp)
-                    )
-
-                    Spacer(Modifier.width(4.dp))
-
-                    // Вейвформ
-                    androidx.compose.foundation.Canvas(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                    ) {
-                        drawWaveform(amplitudes, size)
-                    }
-
                     Spacer(Modifier.width(10.dp))
 
-                    // Кнопка готово (зелёный чекмарк)
+                    // Partial text / placeholder
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
-                            .background(Color(0xFF00875A), CircleShape)
-                            .clip(CircleShape)
-                            .clickable {
-                                // Пока просто удаляем запись — NLP подключим позже
-                                stopAndDiscard()
-                                onDismiss()
-                            },
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text     = if (partialText.isEmpty()) "Говорите..." else partialText,
+                            color    = Color.White.copy(alpha = if (partialText.isEmpty()) 0.40f else 0.92f),
+                            fontSize = 15.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Кнопка готово с ripple-кольцами (глубокий синий)
+                    val rippleTransition = rememberInfiniteTransition(label = "ripple")
+                    val ripplePhase by rippleTransition.animateFloat(
+                        initialValue  = 0f,
+                        targetValue   = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 1400, easing = LinearEasing)
+                        ),
+                        label = "ripplePhase"
+                    )
+                    Box(
+                        modifier = Modifier.size(56.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Готово",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        // Ripple-кольца вокруг кнопки
+                        val amp = voiceAmplitude
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                            val maxR  = size.minDimension / 2f
+                            val scale = amp.coerceIn(0.25f, 1f)
+                            for (i in 0..2) {
+                                val rPhase = (ripplePhase + i / 3f) % 1f
+                                drawCircle(
+                                    color  = Color.White.copy(alpha = (1f - rPhase) * 0.45f),
+                                    radius = rPhase * maxR * scale,
+                                    style  = Stroke(width = 1.5.dp.toPx())
+                                )
+                            }
+                        }
+                        // Кнопка с галочкой
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color(0xFF001F6E), CircleShape)
+                                .clip(CircleShape)
+                                .clickable {
+                                    val lastText = partialText
+                                    discardRecording()
+                                    if (lastText.isNotBlank()) submitVoice(lastText) else onDismiss()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Готово",
+                                tint     = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 } else {
                     // ── Режим текста ──────────────────────────────────
@@ -365,7 +408,7 @@ private fun InputOverlay(
                                     text, context, scope, onDismiss,
                                     onBalance = { requirePin(onBalance) },
                                     onTransfer = { n, p, b, a -> requirePin { onTransfer(n, p, b, a) } },
-                                    onAmbiguousTransfer = { candidates, a -> requirePin { onAmbiguousTransfer(candidates, a) } },
+                                    onAmbiguousTransfer = { candidates, raw, a -> requirePin { onAmbiguousTransfer(candidates, raw, a) } },
                                     onTopup = { p, a -> requirePin { onTopup(p, a) } },
                                     onConfirm = onConfirm,
                                     setLoading = { isLoading = it },
@@ -397,10 +440,7 @@ private fun InputOverlay(
                                     context, Manifest.permission.RECORD_AUDIO
                                 ) == PackageManager.PERMISSION_GRANTED
                                 if (hasPermission) {
-                                    val result = startRecording(context)
-                                    recorder = result.first
-                                    recordingFile = result.second
-                                    isRecording = true
+                                    startStreaming()
                                 } else {
                                     permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                 }
@@ -463,45 +503,7 @@ private fun InputOverlay(
     }
 }
 
-// ── Рисуем вейвформ на Canvas ─────────────────────────────────────────────
-
-private fun DrawScope.drawWaveform(amplitudes: List<Float>, canvasSize: Size) {
-    val barCount = amplitudes.size
-    val gap = 3.dp.toPx()
-    val barWidth = ((canvasSize.width - gap * (barCount - 1)) / barCount).coerceAtLeast(2f)
-    val maxBarHeight = canvasSize.height * 0.85f
-    val centerY = canvasSize.height / 2f
-
-    amplitudes.forEachIndexed { i, amp ->
-        val barHeight = (maxBarHeight * amp).coerceAtLeast(4.dp.toPx())
-        val x = i * (barWidth + gap)
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.9f),
-            topLeft = Offset(x, centerY - barHeight / 2f),
-            size = Size(barWidth, barHeight),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
-        )
-    }
-}
-
 // ── Вспомогательные ──────────────────────────────────────────────────────────
-
-private fun startRecording(context: android.content.Context): Pair<MediaRecorder, File> {
-    val file = File(context.cacheDir, "vita_voice_${System.currentTimeMillis()}.m4a")
-    val rec = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-        MediaRecorder(context)
-    else
-        @Suppress("DEPRECATION") MediaRecorder()
-    rec.apply {
-        setAudioSource(MediaRecorder.AudioSource.MIC)
-        setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-        setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-        setOutputFile(file.absolutePath)
-        prepare()
-        start()
-    }
-    return Pair(rec, file)
-}
 
 private fun submitText(
     text: String,
@@ -510,7 +512,7 @@ private fun submitText(
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
     onTransfer: (name: String?, phone: String?, bankDisplayName: String?, amount: Double?) -> Unit,
-    onAmbiguousTransfer: (List<ContactCandidate>, Double?) -> Unit,
+    onAmbiguousTransfer: (List<ContactCandidate>, String /* recipientRaw */, Double?) -> Unit,
     onTopup: (String? /* phone */, Double? /* amount */) -> Unit,
     onConfirm: (ConfirmationData) -> Unit,
     setLoading: (Boolean) -> Unit,
@@ -547,7 +549,7 @@ private fun submitText(
                         }
                         else ->
                             // Несколько кандидатов — показываем выбор
-                            onAmbiguousTransfer(candidates, parsed.amount)
+                            onAmbiguousTransfer(candidates, recipientRaw, parsed.amount)
                     }
                 } else {
                     onTransfer(null, null, null, parsed.amount)
@@ -557,16 +559,22 @@ private fun submitText(
             "topup" -> onTopup(parsed.phone, parsed.amount)
 
             "open_app" -> {
-                val appIntent = parsed.app?.let {
-                    SystemIntentHandler.openApp(it, context)
-                }
-                if (appIntent != null) {
-                    try { context.startActivity(appIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
-                    catch (_: Exception) { onError("Не удалось открыть приложение") }
+                val appName = parsed.app
+                if (appName == null) {
+                    onError("Не понял, какое приложение открыть")
                 } else {
-                    onError("Приложение не найдено")
+                    val appIntent = SystemIntentHandler.openApp(appName, context)
+                    if (appIntent == null) {
+                        onError("Приложение не установлено")
+                    } else {
+                        try {
+                            context.startActivity(appIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                            onDismiss()
+                        } catch (_: Exception) {
+                            onError("Не удалось открыть приложение")
+                        }
+                    }
                 }
-                onDismiss()
             }
 
             "alarm" -> {
@@ -577,8 +585,10 @@ private fun submitText(
                         SystemIntentHandler.setAlarm(h, m)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
-                } catch (_: Exception) {}
-                onDismiss()
+                    onDismiss()
+                } catch (_: Exception) {
+                    onError("Не удалось поставить будильник")
+                }
             }
 
             "timer" -> {
@@ -588,8 +598,10 @@ private fun submitText(
                         SystemIntentHandler.setTimer(secs)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
-                } catch (_: Exception) {}
-                onDismiss()
+                    onDismiss()
+                } catch (_: Exception) {
+                    onError("Не удалось запустить таймер")
+                }
             }
 
             "call" -> {
@@ -598,8 +610,27 @@ private fun submitText(
                         SystemIntentHandler.call(parsed.contact, context)
                             .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
-                } catch (_: Exception) {}
-                onDismiss()
+                    onDismiss()
+                } catch (_: Exception) {
+                    onError("Не удалось открыть набор номера")
+                }
+            }
+
+            "navigate" -> {
+                val dest = parsed.destination
+                if (dest.isNullOrBlank()) {
+                    onError("Не понял, куда ехать")
+                } else {
+                    try {
+                        context.startActivity(
+                            SystemIntentHandler.navigate(dest, context)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                        onDismiss()
+                    } catch (_: Exception) {
+                        onError("Не удалось открыть карты")
+                    }
+                }
             }
 
             else -> onError("Не понял команду, попробуй иначе")
