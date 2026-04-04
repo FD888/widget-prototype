@@ -2,15 +2,17 @@ package com.vtbvita.widget
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.media.MediaRecorder
-import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.compose.runtime.DisposableEffect
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,7 +24,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -32,41 +33,45 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.vtbvita.widget.BankingSession
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.ConfirmationData
+import com.vtbvita.widget.nlp.ContactCandidate
+import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import com.vtbvita.widget.ui.theme.VtbBlue
 import com.vtbvita.widget.ui.theme.VtbBlueMid
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.File
-import kotlin.math.sin
-import kotlin.math.abs
 
 class InputActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_INTENT_TYPE = "intent_type"
-        const val EXTRA_MODE = "mode"
-        const val MODE_TEXT = "text"
-        const val MODE_RECORDING = "recording"
+        const val EXTRA_MODE        = "mode"
+        const val EXTRA_VOICE_TEXT  = "voice_text"
+        const val MODE_TEXT         = "text"
+        const val MODE_RECORDING    = "recording"
+        /** Голос уже распознан сервисом — сразу отправляем на NLP, показываем PIN если нужно. */
+        const val MODE_VOICE_RESULT = "voice_result"
     }
 
     override fun onPause() {
         super.onPause()
+        BankingSession.clear()  // каждый выход из виджета сбрасывает banking-сессию
         restoreWidget()
     }
 
@@ -80,6 +85,7 @@ class InputActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BankingSession.clear()  // сбрасываем сессию от предыдущих флоу (ContactPicker/TransferDetails не чистят)
         val startMode = intent.getStringExtra(EXTRA_MODE) ?: MODE_TEXT
         window.setSoftInputMode(
             if (startMode == MODE_RECORDING)
@@ -92,25 +98,49 @@ class InputActivity : ComponentActivity() {
         setContent {
             VTBVitaTheme {
                 InputOverlay(
-                    startInRecordingMode = startMode == MODE_RECORDING,
+                    startMode = startMode,
+                    startVoiceText = intent.getStringExtra(EXTRA_VOICE_TEXT),
                     onDismiss = { finish() },
                     onBalance = {
-                        startActivity(
-                            android.content.Intent(this, BalanceActivity::class.java)
-                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
+                        val i = android.content.Intent(this, BalanceActivity::class.java)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     },
-                    onTransfer = {
-                        startActivity(ContactPickerActivity.newIntent(this))
+                    onTransfer = { name, phone, bankDisplayName, amount ->
+                        val i = if (name != null || phone != null) {
+                            TransferDetailsActivity.newIntent(
+                                this,
+                                recipientName = name ?: "",
+                                recipientPhone = phone ?: "",
+                                amount = amount ?: 0.0,
+                                bankDisplayName = bankDisplayName ?: ""
+                            )
+                        } else {
+                            ContactPickerActivity.newIntent(this, amount)
+                        }
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     },
-                    onTopup = {
-                        startActivity(TopupInputActivity.newIntent(this))
+                    onAmbiguousTransfer = { candidates, recipientRaw, amount ->
+                        ContactDisambiguationActivity.pendingCandidates = candidates
+                        ContactDisambiguationActivity.pendingRecipientRaw = recipientRaw
+                        val i = ContactDisambiguationActivity.newIntent(this, amount)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
+                        finish()
+                    },
+                    onTopup = { phone, amount ->
+                        val i = TopupInputActivity.newIntent(this, phone ?: "", amount ?: 0.0)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     },
                     onConfirm = { data ->
-                        startActivity(ConfirmActivity.newIntent(this, data))
+                        val i = ConfirmActivity.newIntent(this, data)
+                        BankingSession.putInIntent(i)
+                        startActivity(i)
                         finish()
                     }
                 )
@@ -121,86 +151,131 @@ class InputActivity : ComponentActivity() {
 
 @Composable
 private fun InputOverlay(
-    startInRecordingMode: Boolean,
+    startMode: String,
+    startVoiceText: String?,
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
-    onTransfer: () -> Unit,
-    onTopup: () -> Unit,
+    onTransfer: (name: String?, phone: String?, bankDisplayName: String?, amount: Double?) -> Unit,
+    onAmbiguousTransfer: (List<ContactCandidate>, String /* recipientRaw */, Double?) -> Unit,
+    onTopup: (String?, Double?) -> Unit,
     onConfirm: (ConfirmationData) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    var contentVisible by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf("") }
+    val isVoiceResult = startMode == InputActivity.MODE_VOICE_RESULT
     // Инициализируем сразу — нет мигания текстового режима при открытии через микрофон
-    var isRecording by remember { mutableStateOf(startInRecordingMode) }
-    var recordingSeconds by remember { mutableStateOf(0) }
+    var isRecording by remember { mutableStateOf(startMode == InputActivity.MODE_RECORDING) }
     val focusRequester = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    // Запись
-    var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
-    var recordingFile by remember { mutableStateOf<File?>(null) }
-    var amplitudes by remember { mutableStateOf(List(30) { 0f }) }
+    // Banking PIN gate
+    var pinRequired by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    fun requirePin(action: () -> Unit) {
+        if (BankingSession.isValid()) {
+            action()
+        } else {
+            pendingAction = action
+            pinRequired = true
+        }
+    }
+
+    // STT streaming
+    var streamingRecorder by remember { mutableStateOf<VoiceStreamingRecorder?>(null) }
+    var partialText by remember { mutableStateOf("") }
+    var voiceAmplitude by remember { mutableStateOf(0.08f) }
+
+    // Освобождаем ресурсы при уходе из composable
+    DisposableEffect(Unit) {
+        onDispose { streamingRecorder?.stop() }
+    }
+
+    fun discardRecording() {
+        streamingRecorder?.stop()
+        streamingRecorder = null
+        isRecording = false
+        partialText = ""
+    }
+
+    fun submitVoice(voiceText: String) {
+        if (voiceText.isBlank() || isLoading) return
+        errorMsg = ""
+        submitText(
+            voiceText, context, scope, onDismiss,
+            onBalance    = { requirePin(onBalance) },
+            onTransfer   = { n, p, b, a -> requirePin { onTransfer(n, p, b, a) } },
+            onAmbiguousTransfer = { candidates, raw, a -> requirePin { onAmbiguousTransfer(candidates, raw, a) } },
+            onTopup      = { p, a -> requirePin { onTopup(p, a) } },
+            onConfirm    = onConfirm,
+            setLoading   = { isLoading = it },
+            onError      = { errorMsg = it }
+        )
+    }
+
+    fun startStreaming() {
+        val rec = VoiceStreamingRecorder(
+            onPartial = { t -> scope.launch(Dispatchers.Main) { partialText = t } },
+            onFinal   = { t -> scope.launch(Dispatchers.Main) {
+                val captured = if (t.isNotBlank()) t else partialText
+                discardRecording()
+                if (captured.isNotBlank()) submitVoice(captured) else onDismiss()
+            }},
+            onError   = { msg -> scope.launch(Dispatchers.Main) {
+                discardRecording()
+                errorMsg = msg
+            }}
+        )
+        streamingRecorder = rec
+        rec.start(scope)
+        isRecording = true
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            val result = startRecording(context)
-            recorder = result.first
-            recordingFile = result.second
-            isRecording = true
-        }
+        if (granted) startStreaming()
     }
 
-    // Автозапуск записи если открыли через кнопку микрофона
-    LaunchedEffect(startInRecordingMode) {
-        if (startInRecordingMode) {
-            delay(150)
-            val hasPermission = ContextCompat.checkSelfPermission(
-                context, Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
-            if (hasPermission) {
-                val result = startRecording(context)
-                recorder = result.first
-                recordingFile = result.second
-                isRecording = true
-            } else {
-                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+    // Автозапуск в зависимости от режима
+    LaunchedEffect(startMode) {
+        when (startMode) {
+            InputActivity.MODE_RECORDING -> {
+                delay(150)
+                val hasPermission = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPermission) startStreaming()
+                else permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             }
-        } else {
-            delay(80)
-            focusRequester.requestFocus()
+            InputActivity.MODE_VOICE_RESULT -> {
+                // Голос уже распознан — сразу отправляем на NLP
+                val vt = startVoiceText
+                if (!vt.isNullOrBlank()) submitVoice(vt) else onDismiss()
+            }
+            else -> {
+                delay(80)
+                focusRequester.requestFocus()
+            }
         }
     }
 
-    // Полинг амплитуды + таймер пока идёт запись
+    // Полинг амплитуды для анимации ripple-колец
     LaunchedEffect(isRecording) {
         if (isRecording) {
-            recordingSeconds = 0
-            var tickMs = 0L
             while (isActive && isRecording) {
-                val raw = recorder?.maxAmplitude?.toFloat() ?: 0f
-                val norm = (raw / 32767f).coerceIn(0.08f, 1f)
-                amplitudes = amplitudes.drop(1) + norm
+                voiceAmplitude = streamingRecorder?.amplitude ?: 0.08f
                 delay(80)
-                tickMs += 80
-                if (tickMs >= 1000) { recordingSeconds++; tickMs = 0 }
             }
         } else {
-            amplitudes = List(30) { 0f }
-            recordingSeconds = 0
+            voiceAmplitude = 0.08f
         }
     }
 
-    fun stopAndDiscard() {
-        try { recorder?.stop() } catch (_: Exception) {}
-        try { recorder?.release() } catch (_: Exception) {}
-        recorder = null
-        recordingFile?.delete()
-        recordingFile = null
-        isRecording = false
-    }
+    LaunchedEffect(Unit) { contentVisible = true }
 
     BoxWithConstraints(
         modifier = Modifier
@@ -210,12 +285,19 @@ private fun InputOverlay(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {
-                    if (isRecording) stopAndDiscard()
+                    if (isRecording) discardRecording()
                     onDismiss()
                 }
             )
     ) {
         val topOffset = maxHeight * 0.15f
+        AnimatedVisibility(
+            visible = contentVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -80 },
+                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)
+            ) + fadeIn(animationSpec = tween(durationMillis = 250))
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -238,7 +320,18 @@ private fun InputOverlay(
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isRecording) {
+                if (isVoiceResult) {
+                    // ── Режим voice result: голос уже распознан, ждём NLP ────
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = if (isLoading) "Обрабатываю…" else startVoiceText ?: "",
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 15.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else if (isRecording) {
                     // ── Режим записи ──────────────────────────────────
                     // Кнопка отмены (красный крестик)
                     Box(
@@ -247,7 +340,7 @@ private fun InputOverlay(
                             .background(Color(0xFFD32F2F), CircleShape)
                             .clip(CircleShape)
                             .clickable {
-                                stopAndDiscard()
+                                discardRecording()
                                 onDismiss()
                             },
                         contentAlignment = Alignment.Center
@@ -260,48 +353,74 @@ private fun InputOverlay(
                         )
                     }
 
-                    Spacer(Modifier.width(8.dp))
-
-                    // Таймер
-                    Text(
-                        text = "%d:%02d".format(recordingSeconds / 60, recordingSeconds % 60),
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 13.sp,
-                        modifier = Modifier.width(32.dp)
-                    )
-
-                    Spacer(Modifier.width(4.dp))
-
-                    // Вейвформ
-                    androidx.compose.foundation.Canvas(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(40.dp)
-                    ) {
-                        drawWaveform(amplitudes, size)
-                    }
-
                     Spacer(Modifier.width(10.dp))
 
-                    // Кнопка готово (зелёный чекмарк)
+                    // Partial text / placeholder
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
-                            .background(Color(0xFF00875A), CircleShape)
-                            .clip(CircleShape)
-                            .clickable {
-                                // Пока просто удаляем запись — NLP подключим позже
-                                stopAndDiscard()
-                                onDismiss()
-                            },
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text     = if (partialText.isEmpty()) "Говорите..." else partialText,
+                            color    = Color.White.copy(alpha = if (partialText.isEmpty()) 0.40f else 0.92f),
+                            fontSize = 17.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Кнопка готово с ripple-кольцами (глубокий синий)
+                    val rippleTransition = rememberInfiniteTransition(label = "ripple")
+                    val ripplePhase by rippleTransition.animateFloat(
+                        initialValue  = 0f,
+                        targetValue   = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 1400, easing = LinearEasing)
+                        ),
+                        label = "ripplePhase"
+                    )
+                    Box(
+                        modifier = Modifier.size(56.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Готово",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        // Ripple-кольца вокруг кнопки
+                        val amp = voiceAmplitude
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                            val maxR  = size.minDimension / 2f
+                            val scale = amp.coerceIn(0.25f, 1f)
+                            for (i in 0..2) {
+                                val rPhase = (ripplePhase + i / 3f) % 1f
+                                drawCircle(
+                                    color  = Color.White.copy(alpha = (1f - rPhase) * 0.45f),
+                                    radius = rPhase * maxR * scale,
+                                    style  = Stroke(width = 1.5.dp.toPx())
+                                )
+                            }
+                        }
+                        // Кнопка отправки (стрелка вверх)
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(Color(0xFF001F6E), CircleShape)
+                                .clip(CircleShape)
+                                .clickable {
+                                    val lastText = partialText
+                                    discardRecording()
+                                    if (lastText.isNotBlank()) submitVoice(lastText) else onDismiss()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_arrow_up),
+                                contentDescription = "Отправить",
+                                tint     = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 } else {
                     // ── Режим текста ──────────────────────────────────
@@ -312,22 +431,31 @@ private fun InputOverlay(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester),
-                        textStyle = TextStyle(color = Color.White, fontSize = 17.sp),
+                        textStyle = TextStyle(color = Color.White, fontSize = 19.sp),
                         cursorBrush = SolidColor(Color.White),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = {
-                            if (text.isNotBlank() && !isLoading)
-                                submitText(text, context, scope, onDismiss, onBalance, onTransfer, onTopup, onConfirm) {
-                                    isLoading = it
-                                }
+                            if (text.isNotBlank() && !isLoading) {
+                                errorMsg = ""
+                                submitText(
+                                    text, context, scope, onDismiss,
+                                    onBalance = { requirePin(onBalance) },
+                                    onTransfer = { n, p, b, a -> requirePin { onTransfer(n, p, b, a) } },
+                                    onAmbiguousTransfer = { candidates, raw, a -> requirePin { onAmbiguousTransfer(candidates, raw, a) } },
+                                    onTopup = { p, a -> requirePin { onTopup(p, a) } },
+                                    onConfirm = onConfirm,
+                                    setLoading = { isLoading = it },
+                                    onError = { errorMsg = it }
+                                )
+                            }
                         }),
                         decorationBox = { innerTextField ->
                             if (text.isEmpty()) {
                                 Text(
                                     "Как настроение?",
                                     color = Color.White.copy(alpha = 0.6f),
-                                    fontSize = 17.sp
+                                    fontSize = 19.sp
                                 )
                             }
                             innerTextField()
@@ -336,91 +464,118 @@ private fun InputOverlay(
 
                     Spacer(Modifier.width(8.dp))
 
-                    // Иконка микрофона — переключает в режим записи
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
-                            .clickable {
-                                val hasPermission = ContextCompat.checkSelfPermission(
-                                    context, Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPermission) {
-                                    val result = startRecording(context)
-                                    recorder = result.first
-                                    recordingFile = result.second
-                                    isRecording = true
-                                } else {
-                                    permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_mic),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
+                    if (text.isNotEmpty()) {
+                        // Текст введён — кнопка отправки (стрелка вверх)
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
+                                .clickable {
+                                    if (!isLoading) {
+                                        errorMsg = ""
+                                        submitText(
+                                            text, context, scope, onDismiss,
+                                            onBalance = { requirePin(onBalance) },
+                                            onTransfer = { n, p, b, a -> requirePin { onTransfer(n, p, b, a) } },
+                                            onAmbiguousTransfer = { candidates, raw, a -> requirePin { onAmbiguousTransfer(candidates, raw, a) } },
+                                            onTopup = { p, a -> requirePin { onTopup(p, a) } },
+                                            onConfirm = onConfirm,
+                                            setLoading = { isLoading = it },
+                                            onError = { errorMsg = it }
+                                        )
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_arrow_up),
+                                contentDescription = "Отправить",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    } else {
+                        // Поле пустое — кнопка микрофона
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
+                                .clickable {
+                                    val hasPermission = ContextCompat.checkSelfPermission(
+                                        context, Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPermission) {
+                                        startStreaming()
+                                    } else {
+                                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_mic),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // ── Чипы (только в текстовом режиме) ──────────────────────
-            if (!isRecording) {
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { onTransfer() }
-                    QuickChip("Баланс", Modifier.weight(1f), enabled = !isLoading) { onBalance() }
-                    QuickChip("Пополнить", Modifier.weight(1f), enabled = !isLoading) { onTopup() }
+            // ── Сообщение об ошибке ───────────────────────────────────
+            if (errorMsg.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                androidx.compose.material3.Text(
+                    text = errorMsg,
+                    color = Color(0xFFFF6B6B),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+
+            // ── Чипы (только в текстовом режиме) — fade-in при появлении ──
+            AnimatedVisibility(
+                visible = !isRecording,
+                enter = fadeIn(animationSpec = tween(durationMillis = 220))
+            ) {
+                Column {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QuickChip("Перевод", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTransfer(null, null, null, null) } }
+                        QuickChip("Баланс", Modifier.weight(1f), enabled = !isLoading) { requirePin(onBalance) }
+                        QuickChip("Пополнить", Modifier.weight(1f), enabled = !isLoading) { requirePin { onTopup(null, null) } }
+                    }
                 }
             }
+
+            // ── Inline PIN overlay ──────────────────────────────────────
+            if (pinRequired) {
+                Spacer(Modifier.height(8.dp))
+                InlinePinOverlay(
+                    scope = scope,
+                    context = context,
+                    onSuccess = { token, expiresIn ->
+                        BankingSession.save(token, expiresIn)
+                        pinRequired = false
+                        pendingAction?.invoke()
+                        pendingAction = null
+                    },
+                    onCancel = {
+                        pinRequired = false
+                        pendingAction = null
+                    }
+                )
+            }
         }
-    }
-}
-
-// ── Рисуем вейвформ на Canvas ─────────────────────────────────────────────
-
-private fun DrawScope.drawWaveform(amplitudes: List<Float>, canvasSize: Size) {
-    val barCount = amplitudes.size
-    val gap = 3.dp.toPx()
-    val barWidth = ((canvasSize.width - gap * (barCount - 1)) / barCount).coerceAtLeast(2f)
-    val maxBarHeight = canvasSize.height * 0.85f
-    val centerY = canvasSize.height / 2f
-
-    amplitudes.forEachIndexed { i, amp ->
-        val barHeight = (maxBarHeight * amp).coerceAtLeast(4.dp.toPx())
-        val x = i * (barWidth + gap)
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.9f),
-            topLeft = Offset(x, centerY - barHeight / 2f),
-            size = Size(barWidth, barHeight),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
-        )
+        } // AnimatedVisibility
     }
 }
 
 // ── Вспомогательные ──────────────────────────────────────────────────────────
-
-private fun startRecording(context: android.content.Context): Pair<MediaRecorder, File> {
-    val file = File(context.cacheDir, "vita_voice_${System.currentTimeMillis()}.m4a")
-    val rec = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-        MediaRecorder(context)
-    else
-        @Suppress("DEPRECATION") MediaRecorder()
-    rec.apply {
-        setAudioSource(MediaRecorder.AudioSource.MIC)
-        setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-        setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-        setOutputFile(file.absolutePath)
-        prepare()
-        start()
-    }
-    return Pair(rec, file)
-}
 
 private fun submitText(
     text: String,
@@ -428,41 +583,244 @@ private fun submitText(
     scope: kotlinx.coroutines.CoroutineScope,
     onDismiss: () -> Unit,
     onBalance: () -> Unit,
-    onTransfer: () -> Unit,
-    onTopup: () -> Unit,
+    onTransfer: (name: String?, phone: String?, bankDisplayName: String?, amount: Double?) -> Unit,
+    onAmbiguousTransfer: (List<ContactCandidate>, String /* recipientRaw */, Double?) -> Unit,
+    onTopup: (String? /* phone */, Double? /* amount */) -> Unit,
     onConfirm: (ConfirmationData) -> Unit,
-    setLoading: (Boolean) -> Unit
+    setLoading: (Boolean) -> Unit,
+    onError: (String) -> Unit,
 ) {
-    // 1. Системные команды — будильник, таймер, приложения, звонок
-    val systemIntent = SystemIntentHandler.parse(text, context)
-    if (systemIntent != null) {
-        try {
-            context.startActivity(systemIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: Exception) {}
-        onDismiss()
-        return
+    setLoading(true)
+    scope.launch {
+        // Все команды идут на сервер — сервер решает что делать
+        val result = com.vtbvita.widget.nlp.NlpService.parse(text, context)
+
+        result.onFailure {
+            setLoading(false)
+            onError("Нет соединения, попробуй позже")
+            return@launch
+        }
+
+        val parsed = result.getOrThrow()
+        setLoading(false)
+
+        when (parsed.intent) {
+            "balance" -> onBalance()
+
+            "transfer" -> {
+                val recipientRaw = parsed.recipient
+                if (recipientRaw != null) {
+                    val candidates = ContactMatcher.search(recipientRaw, context)
+                    when {
+                        candidates.isEmpty() ->
+                            // Контакт не найден — открываем полный список с предзаполненной суммой
+                            onTransfer(null, null, null, parsed.amount)
+                        ContactMatcher.isHighConfidence(candidates) -> {
+                            val c = candidates[0]
+                            onTransfer(c.displayName, c.phone, c.bankDisplayName, parsed.amount)
+                        }
+                        else ->
+                            // Несколько кандидатов — показываем выбор
+                            onAmbiguousTransfer(candidates, recipientRaw, parsed.amount)
+                    }
+                } else {
+                    onTransfer(null, null, null, parsed.amount)
+                }
+            }
+
+            "topup" -> onTopup(parsed.phone, parsed.amount)
+
+            "open_app" -> {
+                val appName = parsed.app
+                if (appName == null) {
+                    onError("Не понял, какое приложение открыть")
+                } else {
+                    val appIntent = SystemIntentHandler.openApp(appName, context)
+                    if (appIntent == null) {
+                        onError("Приложение не установлено")
+                    } else {
+                        try {
+                            context.startActivity(appIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                            onDismiss()
+                        } catch (_: Exception) {
+                            onError("Не удалось открыть приложение")
+                        }
+                    }
+                }
+            }
+
+            "alarm" -> {
+                val h = parsed.hour ?: 8
+                val m = parsed.minute ?: 0
+                try {
+                    context.startActivity(
+                        SystemIntentHandler.setAlarm(h, m)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    onDismiss()
+                } catch (_: Exception) {
+                    onError("Не удалось поставить будильник")
+                }
+            }
+
+            "timer" -> {
+                val secs = parsed.durationSeconds ?: 60
+                try {
+                    context.startActivity(
+                        SystemIntentHandler.setTimer(secs)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    onDismiss()
+                } catch (_: Exception) {
+                    onError("Не удалось запустить таймер")
+                }
+            }
+
+            "call" -> {
+                try {
+                    context.startActivity(
+                        SystemIntentHandler.call(parsed.contact, context)
+                            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    onDismiss()
+                } catch (_: Exception) {
+                    onError("Не удалось открыть набор номера")
+                }
+            }
+
+            "navigate" -> {
+                val dest = parsed.destination
+                if (dest.isNullOrBlank()) {
+                    onError("Не понял, куда ехать")
+                } else {
+                    try {
+                        context.startActivity(
+                            SystemIntentHandler.navigate(dest, context)
+                                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                        onDismiss()
+                    } catch (_: Exception) {
+                        onError("Не удалось открыть карты")
+                    }
+                }
+            }
+
+            else -> onError("Не понял команду, попробуй иначе")
+        }
+    }
+}
+
+@Composable
+private fun InlinePinOverlay(
+    scope: kotlinx.coroutines.CoroutineScope,
+    context: android.content.Context,
+    onSuccess: (String, Int) -> Unit,
+    onCancel: () -> Unit
+) {
+    var pin by remember { mutableStateOf("") }
+    var errorMsg by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+
+    fun onDigit(d: String) {
+        if (pin.length < 4 && !isLoading) {
+            pin += d
+            if (pin.length == 4) {
+                isLoading = true
+                scope.launch {
+                    val result = MockApiService.auth(pin, context)
+                    result.fold(
+                        onSuccess = { tokenResult ->
+                            onSuccess(tokenResult.token, tokenResult.expiresInSeconds)
+                        },
+                        onFailure = {
+                            errorMsg = "Неверный PIN"
+                            delay(400)
+                            pin = ""
+                            delay(800)
+                            errorMsg = ""
+                            isLoading = false
+                        }
+                    )
+                }
+            }
+        }
     }
 
-    // 2. Банковские команды
-    when {
-        text.contains("баланс", ignoreCase = true) -> onBalance()
-        text.contains("пополн", ignoreCase = true) ||
-        text.contains("телефон", ignoreCase = true) -> onTopup()
-        text.contains("перевод", ignoreCase = true) ||
-        text.contains("переведи", ignoreCase = true) -> onTransfer()
-        else -> {
-            setLoading(true)
-            scope.launch {
-                runCatching {
-                    MockApiService.command(
-                        intent = "transfer",
-                        amount = 1000.0,
-                        recipient = "Маша",
-                        phone = null
-                    )
-                }.onSuccess { onConfirm(it) }
-                    .onFailure { setLoading(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF001A5E).copy(alpha = 0.97f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.Text(
+                "Введите PIN",
+                color = Color.White,
+                fontSize = 15.sp
+            )
+            androidx.compose.material3.Text(
+                "Отмена",
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 13.sp,
+                modifier = Modifier.clickable(onClick = onCancel)
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // 4 точки
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            repeat(4) { i ->
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .background(
+                            when {
+                                errorMsg.isNotBlank() -> Color(0xFFE57373)
+                                i < pin.length -> Color.White
+                                else -> Color.White.copy(alpha = 0.3f)
+                            },
+                            CircleShape
+                        )
+                )
             }
+        }
+
+        if (errorMsg.isNotBlank()) {
+            Spacer(Modifier.height(4.dp))
+            androidx.compose.material3.Text(errorMsg, fontSize = 11.sp, color = Color(0xFFE57373))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Цифровой пад (компактный)
+        val keys = listOf(
+            listOf("1", "2", "3"),
+            listOf("4", "5", "6"),
+            listOf("7", "8", "9"),
+            listOf("", "0", "⌫")
+        )
+        keys.forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { key ->
+                    if (key.isEmpty()) {
+                        Spacer(Modifier.size(56.dp))
+                    } else {
+                        PinKey(label = key, size = 56.dp, enabled = !isLoading) {
+                            when (key) {
+                                "⌫" -> if (pin.isNotEmpty() && !isLoading) pin = pin.dropLast(1)
+                                else -> onDigit(key)
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
@@ -484,6 +842,6 @@ private fun QuickChip(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.4f), fontSize = 13.sp)
+        Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.4f), fontSize = 16.sp)
     }
 }

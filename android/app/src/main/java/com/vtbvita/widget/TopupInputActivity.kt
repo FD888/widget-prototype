@@ -41,8 +41,14 @@ class TopupInputActivity : ComponentActivity() {
             }
     }
 
+    override fun onStop() {
+        super.onStop()
+        finish()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BankingSession.restoreFromIntent(intent)
         val prefillPhone = intent.getStringExtra(EXTRA_PHONE) ?: ""
         val prefillAmount = intent.getDoubleExtra(EXTRA_AMOUNT, 0.0)
 
@@ -87,6 +93,7 @@ private fun TopupSheet(
     onDismiss: () -> Unit,
     onSuccess: (String) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var phone by remember { mutableStateOf(prefillPhone) }
     var amountText by remember {
@@ -192,14 +199,16 @@ private fun TopupSheet(
                                         intent = "topup",
                                         amount = amt,
                                         recipient = null,
-                                        phone = phone
+                                        phone = phone,
+                                        context = context
                                     )
                                 }.onSuccess { data ->
                                     runCatching {
                                         MockApiService.confirm(
                                             transactionId = data.transactionId,
                                             sourceAccountId = "debit",
-                                            selectedBank = null
+                                            selectedBank = null,
+                                            context = context
                                         )
                                     }.onSuccess { result ->
                                         onSuccess("✓ ${result.message}")

@@ -34,7 +34,7 @@ C-02 + C-03 → C-05
 | ID | Задача | Статус | Владелец |
 |----|--------|:------:|----------|
 | C-06 | Контекстная строка виджета с mock-событиями | [ ] | Денис |
-| C-07 | Edge cases: NLP не распознал / несколько кандидатов | [ ] | Яна + Денис |
+| C-07 | Edge cases: NLP не распознал / несколько кандидатов | [x] | Яна + Денис |
 | C-09 | Замер объёма данных виджета vs полного приложения (для питча) | [ ] | Яна |
 
 ---
@@ -48,6 +48,7 @@ C-02 + C-03 → C-05
 | C-04 | Android Widget UI (все экраны Phase 1 + экстра) | 2026-04-02 | `feature/C-04-widget-ui` |
 | U-01 | UI/UX: виджет-капсула, InputActivity, флоу переводов, Mock Bank | 2026-04-02 | `feature/C-04-widget-ui` |
 | C-08 | Голосовой ввод: MediaRecorder + waveform + таймер | 2026-04-02 | `feature/C-04-widget-ui` |
+| C-04+ | Widget UX: VoiceRecordingService, пульсирующие кольца, VAD, кнопка ↑, анимация InputActivity | 2026-04-05 | `feature/C-04-widget-ui` |
 
 ---
 
@@ -67,3 +68,12 @@ C-02 + C-03 → C-05
 | 2026-04-01 | MockBankActivity: скриншоты + кликабельный таббар | Симуляция банковского приложения без реального UI |
 | 2026-04-02 | SystemIntentHandler: alarm / timer / app launch / call | Виджет выходит за рамки банкинга → демонстрирует потенциал ассистента |
 | 2026-04-02 | Переименование Pulse → Vita | Финальное название продукта |
+| 2026-04-03 | Двухуровневая JWT-авторизация: app_token (30д) + banking JWT (15мин) | PIN не хранится на клиенте — только серверная валидация через /auth |
+| 2026-04-03 | BankingSession.clear() в onPause → PIN при каждом открытии виджета | Безопасность: виджет не должен оставлять active banking-сессию |
+| 2026-04-04 | BankingSession.putInIntent/restoreFromIntent — передача токена в дочерние Activity | onPause очищает BankingSession раньше, чем дочерняя Activity вызывает API |
+| 2026-04-04 | MockBankActivity: 5 реальных Compose-экранов вместо JPEG-скриншотов | Демо выглядит живым; Главная загружает реальные счета через /balance |
+| 2026-04-04 | ContactMatcher: нечёткий поиск + scoring (0.8/0.3 порог однозначности) | "паше коноплеву" → токены → LIKE-запрос → scoring; контакты не покидают телефон |
+| 2026-04-04 | TransferDetailsActivity: слать номер телефона в /command вместо имени | Сервер ищет по _PHONE_INDEX — надёжнее чем по имени с дательным падежом |
+| 2026-04-04 | ContactMatcher scoring: Jaccard matched/max(tokens,parts) вместо fixed weights | "мама" (1 слово) → 1.0 vs "мама Саши" (2 слова) → 0.5; gap 0.5 ≥ 0.3 → auto-resolve |
+| 2026-04-04 | ContactMemory: boost score на основе истории выборов (count≥3 → +0.5 → auto-resolve) | Позволяет виджету обучаться на предпочтениях пользователя без сервера |
+| 2026-04-04 | VoiceStreamingRecorder: WebSocket + PCM 16kHz → Яндекс SpeechKit через прокси-сервер | Потоковый STT вместо batch записи — partial/final результаты в реальном времени |

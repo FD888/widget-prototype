@@ -42,23 +42,46 @@ data class Contact(val name: String, val phone: String)
 class ContactPickerActivity : ComponentActivity() {
 
     companion object {
-        fun newIntent(context: Context): Intent =
+        private const val EXTRA_AMOUNT = "amount"
+
+        fun newIntent(context: Context, amount: Double? = null): Intent =
             Intent(context, ContactPickerActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                amount?.let { putExtra(EXTRA_AMOUNT, it) }
             }
+    }
+
+    // Флаг: мы сами запустили дочерний экран — onStop не должен убивать activity
+    private var startingTransfer = false
+
+    override fun onStop() {
+        super.onStop()
+        if (!startingTransfer) finish()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        startingTransfer = false  // вернулись из TransferDetails — снова готовы к выбору
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BankingSession.restoreFromIntent(intent)
+        val prefillAmount = if (intent.hasExtra(EXTRA_AMOUNT))
+            intent.getDoubleExtra(EXTRA_AMOUNT, 0.0) else null
         setContent {
             VTBVitaTheme {
                 ContactPickerSheet(
                     onDismiss = { finish() },
                     onContactSelected = { contact ->
-                        startActivity(
-                            TransferDetailsActivity.newIntent(this, contact.name, contact.phone)
+                        val i = TransferDetailsActivity.newIntent(
+                            this, contact.name, contact.phone,
+                            amount = prefillAmount ?: 0.0,
+                            hasContactPicker = true
                         )
-                        finish()
+                        BankingSession.putInIntent(i)
+                        startingTransfer = true
+                        startActivity(i)
+                        // finish() убран — activity остаётся в стеке для возврата
                     }
                 )
             }

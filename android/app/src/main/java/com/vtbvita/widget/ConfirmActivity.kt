@@ -37,6 +37,7 @@ class ConfirmActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BankingSession.restoreFromIntent(intent)
         val data = unpackIntent(intent) ?: run { finish(); return }
 
         setContent {
@@ -102,6 +103,7 @@ private fun ConfirmBottomSheet(
     onDismiss: () -> Unit,
     onSuccess: (String) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedAccountId by remember { mutableStateOf(data.defaultAccountId) }
     var selectedBank by remember { mutableStateOf(data.recipientBanks.firstOrNull()) }
@@ -210,7 +212,8 @@ private fun ConfirmBottomSheet(
                                     MockApiService.confirm(
                                         transactionId = data.transactionId,
                                         sourceAccountId = selectedAccountId,
-                                        selectedBank = selectedBank
+                                        selectedBank = selectedBank,
+                                        context = context
                                     )
                                 }.onSuccess { result ->
                                     onSuccess("✓ ${result.message}")

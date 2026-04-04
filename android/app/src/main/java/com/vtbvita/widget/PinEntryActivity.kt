@@ -11,7 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -19,9 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vtbvita.widget.api.BankingTokenResult
+import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import com.vtbvita.widget.ui.theme.VtbBlue
 import com.vtbvita.widget.ui.theme.VtbBlueMid
@@ -44,9 +48,17 @@ class PinEntryActivity : ComponentActivity() {
                 PinEntryScreen(
                     persona = persona,
                     onBack = { finish() },
-                    onSuccess = {
+                    onLogout = {
+                        SessionManager.logout(applicationContext)
+                        startActivity(
+                            Intent(this, MainActivity::class.java)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        )
+                        finish()
+                    },
+                    onSuccess = { tokenResult ->
+                        BankingSession.save(tokenResult.token, tokenResult.expiresInSeconds)
                         SessionManager.login(applicationContext, persona.id)
-                        // defaultViews теперь сам читает персону из сессии
                         val awm = android.appwidget.AppWidgetManager.getInstance(applicationContext)
                         val ids = awm.getAppWidgetIds(
                             android.content.ComponentName(applicationContext, VitaWidgetProvider::class.java)
@@ -64,28 +76,41 @@ class PinEntryActivity : ComponentActivity() {
 }
 
 @Composable
-fun PinEntryScreen(persona: Persona, onBack: () -> Unit, onSuccess: () -> Unit) {
+fun PinEntryScreen(
+    persona: Persona,
+    onBack: () -> Unit,
+    onLogout: () -> Unit = {},
+    onSuccess: (BankingTokenResult) -> Unit
+) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
     var shake by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
 
     fun onDigit(d: String) {
-        if (pin.length < 4) {
+        if (pin.length < 4 && !isLoading) {
             pin += d
             if (pin.length == 4) {
-                if (pin == persona.pin) {
-                    onSuccess()
-                } else {
-                    scope.launch {
-                        errorMsg = "Неверный PIN"
-                        shake = true
-                        delay(400)
-                        pin = ""
-                        shake = false
-                        delay(800)
-                        errorMsg = ""
-                    }
+                isLoading = true
+                scope.launch {
+                    val result = MockApiService.auth(pin, context)
+                    result.fold(
+                        onSuccess = { tokenResult ->
+                            onSuccess(tokenResult)
+                        },
+                        onFailure = {
+                            errorMsg = "Неверный PIN"
+                            shake = true
+                            delay(400)
+                            pin = ""
+                            shake = false
+                            delay(800)
+                            errorMsg = ""
+                            isLoading = false
+                        }
+                    )
                 }
             }
         }
@@ -102,11 +127,13 @@ fun PinEntryScreen(persona: Persona, onBack: () -> Unit, onSuccess: () -> Unit) 
                 .systemBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Назад
+            // Навигация: кнопка «Назад» слева, «Выйти» справа
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
@@ -116,6 +143,20 @@ fun PinEntryScreen(persona: Persona, onBack: () -> Unit, onSuccess: () -> Unit) 
                         .size(28.dp)
                         .clickable(onClick = onBack)
                 )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                        .clickable(onClick = onLogout),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ExitToApp,
+                        contentDescription = "Выйти",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             Spacer(Modifier.height(40.dp))
@@ -198,9 +239,9 @@ fun PinEntryScreen(persona: Persona, onBack: () -> Unit, onSuccess: () -> Unit) 
                         if (key.isEmpty()) {
                             Spacer(Modifier.size(72.dp))
                         } else {
-                            PinKey(label = key) {
+                            PinKey(label = key, enabled = !isLoading) {
                                 when (key) {
-                                    "⌫" -> if (pin.isNotEmpty()) pin = pin.dropLast(1)
+                                    "⌫" -> if (pin.isNotEmpty() && !isLoading) pin = pin.dropLast(1)
                                     else -> onDigit(key)
                                 }
                             }
@@ -212,7 +253,7 @@ fun PinEntryScreen(persona: Persona, onBack: () -> Unit, onSuccess: () -> Unit) 
 
             Spacer(Modifier.weight(1f))
 
-            // Подсказка PIN
+            // Подсказка PIN (демо)
             Box(
                 modifier = Modifier
                     .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
@@ -231,19 +272,27 @@ fun PinEntryScreen(persona: Persona, onBack: () -> Unit, onSuccess: () -> Unit) 
 }
 
 @Composable
-fun PinKey(label: String, onClick: () -> Unit) {
+fun PinKey(
+    label: String,
+    size: Dp = 72.dp,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
     Box(
         modifier = Modifier
-            .size(72.dp)
-            .background(Color.White.copy(alpha = 0.12f), CircleShape)
-            .clickable(onClick = onClick),
+            .size(size)
+            .background(
+                Color.White.copy(alpha = if (enabled) 0.12f else 0.06f),
+                CircleShape
+            )
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
             fontSize = if (label == "⌫") 22.sp else 26.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.White
+            color = Color.White.copy(alpha = if (enabled) 1f else 0.4f)
         )
     }
 }
