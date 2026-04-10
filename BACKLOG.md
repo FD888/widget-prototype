@@ -17,7 +17,7 @@
 | C-02 | NLP-ядро: парсинг intent'ов (transfer / balance / topup) | [~] | Яна | `feature/C-02-nlp-intent-parser` |
 | C-03 | Mock API: FastAPI-сервис → данные для модалов | [x] | Денис | `feature/C-03-mock-api` |
 | C-04 | Android Widget UI: виджет → ввод → модал → статус | [x] | Денис | `feature/C-04-widget-ui` |
-| C-05 | Деплой: прототип доступен по публичному URL | [ ] | Денис | `feature/C-05-deploy` |
+| C-05 | Деплой: прототип доступен по публичному URL | [x] | Денис | `feature/C-05-deploy` |
 
 ### Зависимости Phase 1
 
@@ -49,6 +49,8 @@ C-02 + C-03 → C-05
 | U-01 | UI/UX: виджет-капсула, InputActivity, флоу переводов, Mock Bank | 2026-04-02 | `feature/C-04-widget-ui` |
 | C-08 | Голосовой ввод: MediaRecorder + waveform + таймер | 2026-04-02 | `feature/C-04-widget-ui` |
 | C-04+ | Widget UX: VoiceRecordingService, пульсирующие кольца, VAD, кнопка ↑, анимация InputActivity | 2026-04-05 | `feature/C-04-widget-ui` |
+| C-05 | Деплой: Docker + nginx + vtb.vibefounder.ru, GitHub Release APK | 2026-04-10 | `feature/C-05-deploy` |
+| C-04++ | BiometricHelper (реальный BiometricPrompt), VTB-шрифты, логотипы банков, VitaComponents, /auth/biometric | 2026-04-10 | `feature/C-04-widget-ui` |
 
 ---
 
@@ -77,3 +79,5 @@ C-02 + C-03 → C-05
 | 2026-04-04 | ContactMatcher scoring: Jaccard matched/max(tokens,parts) вместо fixed weights | "мама" (1 слово) → 1.0 vs "мама Саши" (2 слова) → 0.5; gap 0.5 ≥ 0.3 → auto-resolve |
 | 2026-04-04 | ContactMemory: boost score на основе истории выборов (count≥3 → +0.5 → auto-resolve) | Позволяет виджету обучаться на предпочтениях пользователя без сервера |
 | 2026-04-04 | VoiceStreamingRecorder: WebSocket + PCM 16kHz → Яндекс SpeechKit через прокси-сервер | Потоковый STT вместо batch записи — partial/final результаты в реальном времени |
+| 2026-04-10 | BiometricHelper: реальный BiometricPrompt + /auth/biometric endpoint | Демо показывает нативную биометрию устройства |
+| 2026-04-10 | mock_api: Dockerfile + docker-compose на VDS, сервис доступен на vtb.vibefounder.ru | Изолирован от ТГДОМ, nginx-прокси |

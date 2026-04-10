@@ -3,6 +3,10 @@ package com.vtbvita.widget
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -16,15 +20,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.AccountInfo
+import com.vtbvita.widget.ui.components.SheetGradientHeader
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
+import com.vtbvita.widget.ui.theme.VtbBlue
 import com.vtbvita.widget.ui.theme.VtbGreen
+import com.vtbvita.widget.ui.theme.VtbGreenLight
+import com.vtbvita.widget.ui.theme.VtbSurfaceBg
 import java.util.Locale
 
-/**
- * Показывает балансы всех счетов в виде BottomSheet.
- * Запускается кнопкой «Баланс» в виджете.
- * Тема: Theme.VTBVita.BottomSheet (прозрачный фон).
- */
 class BalanceActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,8 +51,10 @@ private fun BalanceBottomSheet(onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var accounts by remember { mutableStateOf<List<AccountInfo>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var visible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
+        visible = true
         runCatching { MockApiService.getBalance(context) }
             .onSuccess { accounts = it }
             .onFailure { e -> error = e.message ?: "Ошибка загрузки" }
@@ -66,87 +71,109 @@ private fun BalanceBottomSheet(onDismiss: () -> Unit) {
             ),
         contentAlignment = Alignment.BottomCenter
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { /* consume */ },
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(durationMillis = 280)
+            ) + fadeIn(animationSpec = tween(200))
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { },
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                // Handle bar
-                Box(
-                    modifier = Modifier
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                            RoundedCornerShape(2.dp)
-                        )
-                        .align(Alignment.CenterHorizontally)
-                )
+                Column {
+                    // Градиентный заголовок
+                    SheetGradientHeader(title = "Счета и балансы")
 
-                Text("Счета и балансы", style = MaterialTheme.typography.titleLarge)
-                HorizontalDivider()
+                    Column(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        when {
+                            accounts == null && error == null -> {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(color = VtbBlue)
+                                }
+                            }
+                            error != null -> {
+                                Text(
+                                    text = "Ошибка: $error",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                            else -> {
+                                accounts!!.forEach { acc ->
+                                    BalanceAccountCard(acc)
+                                }
+                            }
+                        }
 
-                when {
-                    accounts == null && error == null -> {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                    error != null -> {
-                        Text(
-                            text = "Ошибка: $error",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                    else -> {
-                        accounts!!.forEach { acc ->
-                            AccountBalanceRow(acc)
-                            if (acc != accounts!!.last()) HorizontalDivider(thickness = 0.5.dp)
-                        }
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
-
-                Spacer(Modifier.height(8.dp))
             }
         }
     }
 }
 
 @Composable
-private fun AccountBalanceRow(acc: AccountInfo) {
+private fun BalanceAccountCard(acc: AccountInfo) {
+    val isSavings = acc.id.contains("saving", ignoreCase = true) ||
+                    acc.name.contains("накоп", ignoreCase = true) ||
+                    acc.name.contains("вклад", ignoreCase = true)
+    val accentColor = if (isSavings) VtbGreenLight else VtbBlue
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .background(VtbSurfaceBg, RoundedCornerShape(14.dp))
+            .padding(0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
-            Text(acc.name, style = MaterialTheme.typography.bodyLarge)
-            Text(acc.masked, style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text(
-            text = formatRub(acc.balance),
-            style = MaterialTheme.typography.bodyLarge,
-            color = when {
-                acc.balance < 0 -> MaterialTheme.colorScheme.error
-                else -> VtbGreen
-            }
+        // Цветная полоска слева
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .height(60.dp)
+                .background(accentColor, RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
         )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(acc.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    acc.masked,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                text = formatRub(acc.balance),
+                style = MaterialTheme.typography.titleMedium,
+                color = when {
+                    acc.balance < 0 -> MaterialTheme.colorScheme.error
+                    isSavings -> VtbGreen
+                    else -> VtbBlue
+                }
+            )
+        }
     }
 }
 

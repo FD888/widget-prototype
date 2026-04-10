@@ -53,6 +53,19 @@ object MockApiService {
         }
     }
 
+    /** POST /auth/biometric — аутентификация через биометрию (без PIN). */
+    suspend fun authBiometric(context: Context): Result<BankingTokenResult> = withContext(Dispatchers.IO) {
+        runCatching {
+            val appToken = SessionManager.getAppToken(context)
+                ?: throw Exception("Не авторизован")
+            val json = post("/auth/biometric", JSONObject(), apiKey = appToken)
+            BankingTokenResult(
+                token = json.getString("banking_token"),
+                expiresInSeconds = json.getInt("expires_in_seconds")
+            )
+        }
+    }
+
     /** GET /balance — список счетов. Требует banking JWT. */
     suspend fun getBalance(context: Context): List<AccountInfo> = withContext(Dispatchers.IO) {
         val token = BankingSession.getToken() ?: throw Exception("Требуется PIN")

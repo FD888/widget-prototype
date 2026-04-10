@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-05*
+*Последнее обновление: 2026-04-10*
 
 ### Структура репозитория
 
@@ -38,8 +38,10 @@ widget-prototype/
 │       │   ├── nlp/NlpService.kt           ← HTTP-клиент к /parse (object, не interface)
 │       │   ├── nlp/ContactMatcher.kt       ← нечёткий поиск по ContactsContract (склонения)
 │       │   ├── nlp/ContactMemory.kt        ← SharedPreferences: история выборов → boost score
+│       │   ├── BiometricHelper.kt          ← реальный BiometricPrompt (STRONG + WEAK)
 │       │   ├── model/Models.kt             ← data-классы
-│       │   └── ui/theme/                   ← VTB-цвета, типографика
+│       │   ├── ui/theme/                   ← VTB-цвета, типографика
+│       │   └── ui/components/VitaComponents.kt ← shared UI компоненты
 │       ├── res/
 │       │   ├── layout/widget_vita.xml      ← RemoteViews-макет виджета
 │       │   ├── drawable/widget_bg.xml      ← синий градиент, cornerRadius 32dp
@@ -50,17 +52,24 @@ widget-prototype/
 │       │   ├── drawable/ic_close.xml       ← иконка ✕
 │       │   ├── drawable/ic_arrow_up.xml    ← иконка ↑ (отправить)
 │       │   ├── drawable/widget_field_bg.xml
+│       │   ├── drawable/bank_*.png         ← логотипы банков (vtb, sber, tbank, alfa, raiffeisen)
+│       │   ├── font/vtb_*.ttf              ← VTB-шрифты (bold, book, demi_bold, light)
 │       │   └── xml/vita_widget_info.xml    ← метаданные AppWidget
 │       └── AndroidManifest.xml
 ├── ml/
 │   └── mock_api/
-│       ├── main.py     ← FastAPI: /verify-phone, /auth, /parse, /balance, /command, /confirm
-│       ├── data.py     ← mock-данные (баланс, контакты, счета)
+│       ├── main.py           ← FastAPI: /verify-phone, /auth, /auth/biometric, /parse, /balance, /command, /confirm, /ws/stt
+│       ├── data.py           ← mock-данные (баланс, контакты, счета)
+│       ├── Dockerfile        ← python:3.11-slim, uvicorn
+│       ├── docker-compose.yml← порт 127.0.0.1:8001→8000, env_file
+│       ├── requirements.txt  ← fastapi, uvicorn, httpx, jose, slowapi
+│       ├── .env.example      ← шаблон переменных окружения
 │       └── venv/
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── PRODUCT.md
-│   └── REQUIREMENTS.md
+│   ├── REQUIREMENTS.md
+│   └── DEPLOY.md             ← инструкция деплоя на VDS, nginx, Docker
 ├── .claude/skills/           ← model-invoked skills (commit, deploy, plan)
 ├── BACKLOG.md
 ├── CLAUDE.md
@@ -89,6 +98,8 @@ widget-prototype/
 | Верификация телефона | `PhoneVerificationActivity.kt` | ✅ |
 | In-memory banking JWT | `BankingSession.kt` | ✅ |
 | Inline PIN overlay (виджет) | `InputActivity.kt` | ✅ |
+| Биометрическая аутентификация (BiometricPrompt) | `BiometricHelper.kt` | ✅ |
+| Shared UI компоненты | `ui/components/VitaComponents.kt` | ✅ |
 | Сессия (login/logout) | `SessionManager.kt` | ✅ |
 | Выбор профиля | `MainActivity.kt` | ✅ |
 | PIN-вход | `PinEntryActivity.kt` | ✅ |
@@ -118,6 +129,9 @@ widget-prototype/
 | 2026-04-05 | Анимация колец в виджете через partiallyUpdateAppWidget ~12fps + setFloat (setScaleX/Y/Alpha) | RemoteViews не поддерживает нативную анимацию; частичное обновление через IPC минимально нагружает систему |
 | 2026-04-05 | VAD: клиентский детектор тишины (amplitude < 0.20 на 1.5 сек) → auto-submit | После ≥0.6 сек речи; защита от двойного submit через флаг `submitted` |
 | 2026-04-05 | "DONE"-сигнал протокол WebSocket: клиент шлёт текст "DONE" вместо закрытия соединения | Закрытие WS до ответа сервера → onFinal никогда не приходит; сервер выходит из цикла по сигналу и шлёт final по открытому соединению |
+| 2026-04-10 | BiometricHelper: реальный BiometricPrompt (не заглушка) + /auth/biometric на сервере | Демо включает настоящую биометрию устройства; сервер выдаёт banking_token без PIN |
+| 2026-04-10 | VTB-шрифты (vtb_bold/book/demi_bold/light.ttf) подключены как font resources | Визуальная идентичность ВТБ в Compose-экранах |
+| 2026-04-10 | mock_api докеризирован: Dockerfile + docker-compose.yml, порт 127.0.0.1:8001 | Изоляция от ТГДОМ на одном VDS; nginx проксирует vita-api.vibefounder.ru → :8001 |
 
 ---
 
@@ -130,7 +144,7 @@ widget-prototype/
 | STT | Собственный STT-сервис ВТБ | MediaRecorder (запись) — распознавание в Phase 2 |
 | NLP | NLP/Chatbot Service ВТБ (gRPC) | FastAPI-сервис (`ml/mock_api/`) |
 | Core Banking API | Внутренний REST ВТБ | Mock-данные (data.py) |
-| Биометрия | Android BiometricPrompt | UI-заглушка — кнопка «Подтвердить» |
+| Биометрия | Android BiometricPrompt | BiometricHelper.kt — реальный BiometricPrompt (STRONG+WEAK) |
 | JWT-сессия (app) | Сессия VTB Online App | SharedPreferences (app_token, 30д) |
 | JWT-сессия (banking) | Banking API session | In-memory BankingSession (15мин) |
 | Контакты | Серверная адресная книга | Android ContactsContract (реальная книга) |

@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import com.vtbvita.widget.api.BankingTokenResult
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
@@ -84,10 +86,42 @@ fun PinEntryScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val activity = context as? FragmentActivity
     var pin by remember { mutableStateOf("") }
     var shake by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+
+    val biometricEnabled = remember { SessionManager.isBiometricEnabled(context) }
+    val showBiometric = biometricEnabled && activity != null
+
+    // Вспомогательная функция — биометрия прошла, получаем токен
+    fun loginWithBiometric() {
+        if (isLoading) return
+        isLoading = true
+        scope.launch {
+            MockApiService.authBiometric(context).fold(
+                onSuccess = { tokenResult -> onSuccess(tokenResult) },
+                onFailure = {
+                    errorMsg = "Ошибка биометрии"
+                    delay(1200)
+                    errorMsg = ""
+                    isLoading = false
+                }
+            )
+        }
+    }
+
+    // Автозапуск биометрического промпта при открытии экрана
+    LaunchedEffect(Unit) {
+        if (showBiometric) {
+            delay(300) // даём время отрисоваться
+            BiometricHelper.authenticate(
+                activity = activity!!,
+                onSuccess = { loginWithBiometric() }
+            )
+        }
+    }
 
     fun onDigit(d: String) {
         if (pin.length < 4 && !isLoading) {
@@ -249,6 +283,36 @@ fun PinEntryScreen(
                     }
                 }
                 Spacer(Modifier.height(16.dp))
+            }
+
+            // Кнопка биометрии (если включена и доступна)
+            if (showBiometric) {
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        .clickable(enabled = !isLoading) {
+                            BiometricHelper.authenticate(
+                                activity = activity!!,
+                                onSuccess = { loginWithBiometric() }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Fingerprint,
+                        contentDescription = "Войти по биометрии",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Биометрия",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.55f)
+                )
             }
 
             Spacer(Modifier.weight(1f))
