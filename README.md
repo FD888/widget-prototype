@@ -56,6 +56,7 @@ cd android
 | [docs/PRODUCT.md](docs/PRODUCT.md) | Продуктовая логика, флоу, операции |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура, компоненты, API-контракт |
 | [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Функциональные требования, критерии приёмки |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | План деплоя на VDS: Docker, JWT, безопасность |
 | [CLAUDE.md](CLAUDE.md) | Контекст для AI-ассистента |
 
 ---

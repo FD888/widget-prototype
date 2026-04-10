@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Switch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -230,6 +231,78 @@ fun MainTab(context: Context) {
                 Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Открыть Vita")
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(8.dp))
+            WidgetSettingsCard(context)
+        }
+    }
+}
+
+@Composable
+private fun WidgetSettingsCard(context: Context) {
+    var biometricEnabled by remember {
+        mutableStateOf(SessionManager.isBiometricEnabled(context))
+    }
+    val biometricAvailable = remember {
+        val mgr = androidx.biometric.BiometricManager.from(context)
+        val code = mgr.canAuthenticate(
+            androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
+        )
+        code != androidx.biometric.BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+            Text(
+                "Настройки виджета",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = VtbOnSurface
+            )
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Fingerprint,
+                    contentDescription = null,
+                    tint = if (biometricAvailable) VtbBlue else VtbSecondary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Биометрия",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = VtbOnSurface
+                    )
+                    Text(
+                        if (biometricAvailable) "Вход по отпечатку / лицу вместо PIN"
+                        else "Биометрический сенсор не обнаружен",
+                        fontSize = 12.sp,
+                        color = VtbSecondary
+                    )
+                }
+                Switch(
+                    checked = biometricEnabled,
+                    onCheckedChange = { enabled ->
+                        biometricEnabled = enabled
+                        SessionManager.setBiometricEnabled(context, enabled)
+                    },
+                    enabled = true
+                )
             }
         }
     }

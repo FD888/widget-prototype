@@ -33,6 +33,7 @@ dist/
 local.properties
 *.env
 .env*
+!.env.example
 secrets.properties
 
 # Editor

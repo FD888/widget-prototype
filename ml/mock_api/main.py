@@ -804,6 +804,21 @@ def auth(req: AuthRequest, _: None = Depends(_check_app_token)):
     return AuthResponse(banking_token=token, expires_in_seconds=JWT_EXPIRE_MIN * 60)
 
 
+@app.post("/auth/biometric", response_model=AuthResponse)
+def auth_biometric(_: None = Depends(_check_app_token)):
+    """
+    Аутентификация через биометрию — биометрический промпт прошёл на устройстве,
+    PIN не нужен. Требует X-Api-Key (app_token) чтобы только верифицированные
+    устройства могли получить токен.
+    """
+    expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MIN)
+    token = jwt.encode(
+        {"type": "banking_access", "exp": expire},
+        JWT_SECRET, algorithm="HS256"
+    )
+    return AuthResponse(banking_token=token, expires_in_seconds=JWT_EXPIRE_MIN * 60)
+
+
 class PhoneVerifyRequest(BaseModel):
     phone: str
 

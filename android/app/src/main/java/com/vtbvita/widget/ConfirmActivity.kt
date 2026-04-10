@@ -5,6 +5,10 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,18 +25,15 @@ import com.vtbvita.widget.model.AccountInfo
 import com.vtbvita.widget.model.ConfirmationData
 import com.vtbvita.widget.model.accountsFromJson
 import com.vtbvita.widget.model.accountsToJson
+import com.vtbvita.widget.ui.components.BankCarousel
+import com.vtbvita.widget.ui.components.GradientButton
+import com.vtbvita.widget.ui.components.SheetGradientHeader
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import com.vtbvita.widget.ui.theme.VtbGreen
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.util.Locale
 
-/**
- * Модал подтверждения операции (BottomSheet-стиль).
- *
- * Тема: Theme.VTBVita.BottomSheet (прозрачный фон).
- * Compose рисует затемнение + белую карточку снизу.
- */
 class ConfirmActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +58,6 @@ class ConfirmActivity : ComponentActivity() {
     companion object {
         fun newIntent(context: Context, data: ConfirmationData): Intent =
             Intent(context, ConfirmActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 putExtra("txn_id", data.transactionId)
                 putExtra("intent_type", data.intent)
                 putExtra("title", data.title)
@@ -106,9 +106,12 @@ private fun ConfirmBottomSheet(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     var selectedAccountId by remember { mutableStateOf(data.defaultAccountId) }
-    var selectedBank by remember { mutableStateOf(data.recipientBanks.firstOrNull()) }
+    var selectedBank by remember { mutableStateOf(data.recipientBanks.firstOrNull() ?: "ВТБ") }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var visible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { visible = true }
 
     Box(
         modifier = Modifier
@@ -121,130 +124,114 @@ private fun ConfirmBottomSheet(
             ),
         contentAlignment = Alignment.BottomCenter
     ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { /* consume tap — не закрывать при клике на карточку */ },
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(durationMillis = 280)
+            ) + fadeIn(animationSpec = tween(200))
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { },
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
-                // Handle bar
-                Box(
-                    modifier = Modifier
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                            RoundedCornerShape(2.dp)
-                        )
-                        .align(Alignment.CenterHorizontally)
-                )
-
-                Text(data.title, style = MaterialTheme.typography.titleLarge)
-                HorizontalDivider()
-
-                // Сумма — крупно
-                Text(
-                    text = formatRub(data.amount),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                HorizontalDivider(thickness = 0.5.dp)
-
-                // Детали операции
-                data.recipientDisplayName?.let { DetailRow("Получатель", it) }
-                data.recipientPhone?.let { DetailRow("Телефон", it) }
-                data.topupPhone?.let { DetailRow("Номер", it) }
-                data.operator?.let { DetailRow("Оператор", it) }
-
-                // Выбор счёта списания
-                val selectedAcc = data.sourceAccounts.find { it.id == selectedAccountId }
-                    ?: data.sourceAccounts.firstOrNull()
-
-                if (data.sourceAccounts.size > 1) {
-                    AccountDropdown(data.sourceAccounts, selectedAccountId) { selectedAccountId = it }
-                } else {
-                    selectedAcc?.let { DetailRow("Счёт", "${it.name} ${it.masked}") }
-                }
-
-                selectedAcc?.let {
-                    val afterAmount = it.balance - data.amount
-                    DetailRowColored(
-                        label = "После операции",
-                        value = formatRub(afterAmount),
-                        valueColor = if (afterAmount >= 0) VtbGreen else MaterialTheme.colorScheme.error
+                Column {
+                    // Градиентный заголовок с суммой
+                    SheetGradientHeader(
+                        title = data.title,
+                        subtitle = formatRub(data.amount)
                     )
-                }
 
-                // Выбор банка получателя (только если несколько вариантов)
-                if (data.recipientBanks.size > 1) {
-                    BankDropdown(data.recipientBanks, selectedBank) { selectedBank = it }
-                }
-
-                error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall)
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Отмена") }
-
-                    Button(
-                        onClick = {
-                            isLoading = true
-                            error = null
-                            scope.launch {
-                                runCatching {
-                                    MockApiService.confirm(
-                                        transactionId = data.transactionId,
-                                        sourceAccountId = selectedAccountId,
-                                        selectedBank = selectedBank,
-                                        context = context
-                                    )
-                                }.onSuccess { result ->
-                                    onSuccess("✓ ${result.message}")
-                                }.onFailure { e ->
-                                    error = e.message ?: "Ошибка подтверждения"
-                                    isLoading = false
-                                }
-                            }
-                        },
-                        enabled = !isLoading,
-                        modifier = Modifier.weight(1f)
+                    Column(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
+                        // Детали операции
+                        data.recipientDisplayName?.let { DetailRow("Получатель", it) }
+                        data.recipientPhone?.let { DetailRow("Телефон", it) }
+                        data.topupPhone?.let { DetailRow("Номер", it) }
+                        data.operator?.let { DetailRow("Оператор", it) }
+
+                        // Счёт списания
+                        val selectedAcc = data.sourceAccounts.find { it.id == selectedAccountId }
+                            ?: data.sourceAccounts.firstOrNull()
+
+                        if (data.sourceAccounts.size > 1) {
+                            AccountDropdown(data.sourceAccounts, selectedAccountId) { selectedAccountId = it }
                         } else {
-                            Text("Подтвердить")
+                            selectedAcc?.let { DetailRow("Счёт", "${it.name} ${it.masked}") }
                         }
+
+                        selectedAcc?.let {
+                            val afterAmount = it.balance - data.amount
+                            DetailRowColored(
+                                label = "После операции",
+                                value = formatRub(afterAmount),
+                                valueColor = if (afterAmount >= 0) VtbGreen else MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        // Карусель банков (если несколько вариантов)
+                        if (data.recipientBanks.size > 1) {
+                            BankCarousel(selected = selectedBank, onSelect = { selectedBank = it })
+                        }
+
+                        error?.let {
+                            Text(it, color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            ) { Text("Отмена") }
+
+                            GradientButton(
+                                text = "Подтвердить",
+                                isLoading = isLoading,
+                                enabled = !isLoading,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    isLoading = true
+                                    error = null
+                                    scope.launch {
+                                        runCatching {
+                                            MockApiService.confirm(
+                                                transactionId = data.transactionId,
+                                                sourceAccountId = selectedAccountId,
+                                                selectedBank = selectedBank,
+                                                context = context
+                                            )
+                                        }.onSuccess { result ->
+                                            onSuccess("✓ ${result.message}")
+                                        }.onFailure { e ->
+                                            error = e.message ?: "Ошибка подтверждения"
+                                            isLoading = false
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        Spacer(Modifier.height(4.dp))
                     }
                 }
-
-                Spacer(Modifier.height(4.dp))
             }
         }
     }
 }
 
-// --------- Вспомогательные composable ---------
+// ── Вспомогательные composable ────────────────────────────────────────────────
 
 @Composable
 private fun DetailRow(label: String, value: String) {
@@ -294,36 +281,6 @@ private fun AccountDropdown(
                 DropdownMenuItem(
                     text = { Text("${acc.name} ${acc.masked} · ${formatRub(acc.balance)}") },
                     onClick = { onSelect(acc.id); expanded = false }
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun BankDropdown(
-    banks: List<String>,
-    selected: String?,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val current = selected ?: banks.first()
-
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = current,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Банк получателя") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            banks.forEach { bank ->
-                DropdownMenuItem(
-                    text = { Text(bank) },
-                    onClick = { onSelect(bank); expanded = false }
                 )
             }
         }

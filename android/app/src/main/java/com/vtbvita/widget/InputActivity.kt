@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -34,6 +35,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -170,10 +173,16 @@ private fun InputOverlay(
     var isRecording by remember { mutableStateOf(startMode == InputActivity.MODE_RECORDING) }
     val focusRequester = remember { FocusRequester() }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // Banking PIN gate
     var pinRequired by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // Скрываем клавиатуру, когда появляется PIN-оверлей
+    LaunchedEffect(pinRequired) {
+        if (pinRequired) keyboardController?.hide()
+    }
 
     fun requirePin(action: () -> Unit) {
         if (BankingSession.isValid()) {
@@ -721,6 +730,37 @@ private fun InlinePinOverlay(
     var errorMsg by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
+    val activity = context as? FragmentActivity
+    val biometricEnabled = remember { SessionManager.isBiometricEnabled(context) }
+    val showBiometric = biometricEnabled && activity != null
+
+    fun loginWithBiometric() {
+        if (isLoading) return
+        isLoading = true
+        scope.launch {
+            MockApiService.authBiometric(context).fold(
+                onSuccess = { r -> onSuccess(r.token, r.expiresInSeconds) },
+                onFailure = {
+                    errorMsg = "Ошибка биометрии"
+                    delay(1200)
+                    errorMsg = ""
+                    isLoading = false
+                }
+            )
+        }
+    }
+
+    // Автоматически предлагаем биометрию при появлении оверлея
+    LaunchedEffect(Unit) {
+        if (showBiometric) {
+            delay(150)
+            BiometricHelper.authenticate(
+                activity = activity!!,
+                onSuccess = { loginWithBiometric() }
+            )
+        }
+    }
+
     fun onDigit(d: String) {
         if (pin.length < 4 && !isLoading) {
             pin += d
@@ -809,7 +849,30 @@ private fun InlinePinOverlay(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { key ->
                     if (key.isEmpty()) {
-                        Spacer(Modifier.size(56.dp))
+                        // Ячейка слева от «0»: биометрия или пустышка
+                        if (showBiometric) {
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .background(Color.White.copy(alpha = 0.10f), CircleShape)
+                                    .clickable(enabled = !isLoading) {
+                                        BiometricHelper.authenticate(
+                                            activity = activity!!,
+                                            onSuccess = { loginWithBiometric() }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Fingerprint,
+                                    contentDescription = "Биометрия",
+                                    tint = Color.White.copy(alpha = 0.75f),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        } else {
+                            Spacer(Modifier.size(56.dp))
+                        }
                     } else {
                         PinKey(label = key, size = 56.dp, enabled = !isLoading) {
                             when (key) {
