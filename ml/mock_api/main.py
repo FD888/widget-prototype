@@ -21,6 +21,9 @@ import os
 import re
 import asyncio
 import json
+import grpc
+import grpc.aio
+from yandex_speech import stt_pb2, stt_pb2_grpc
 
 load_dotenv()
 
@@ -1063,7 +1066,7 @@ async def stt_endpoint(ws: WebSocket):
     if not api_key:
         await _stt_mock(ws)
     else:
-        await _stt_stream(ws, api_key)
+        await _stt_stream_grpc(ws, api_key)
 
 
 async def _stt_mock(ws: WebSocket):
@@ -1107,12 +1110,123 @@ async def _stt_mock(ws: WebSocket):
         pass
 
 
+_GRPC_ENDPOINT = "stt.api.cloud.yandex.net:443"
+_GRPC_SENTINEL  = object()  # сигнал конца потока для asyncio.Queue
+
+
+async def _stt_stream_grpc(ws: WebSocket, api_key: str):
+    """
+    STT через Яндекс SpeechKit gRPC Streaming API (v2).
+    Один двунаправленный gRPC-стрим на WebSocket-сессию.
+    Архитектура: asyncio.Queue соединяет WS-читателя и gRPC-итератор.
+
+    Биллинг: одна сессия = одна единица тарификации (не N REST-запросов).
+    Android-сторона не меняется — WebSocket-протокол идентичен.
+    """
+    import logging as _log
+    folder_id = os.getenv("YANDEX_FOLDER_ID", "").strip()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=50)
+
+    # --- Task A: читает PCM-чанки из WebSocket → кладёт в queue ---
+    async def ws_reader():
+        try:
+            while True:
+                data = await asyncio.wait_for(ws.receive(), timeout=30.0)
+                if data["type"] == "websocket.disconnect":
+                    break
+                if data.get("text") == "DONE":
+                    _log.warning("[STT-gRPC] received DONE signal")
+                    break
+                raw = data.get("bytes")
+                if raw:
+                    await queue.put(raw)
+        except (asyncio.TimeoutError, WebSocketDisconnect):
+            _log.warning("[STT-gRPC] ws_reader: timeout or disconnect")
+        finally:
+            await queue.put(_GRPC_SENTINEL)
+
+    # --- gRPC request async generator: конфиг → PCM-чанки из queue ---
+    async def request_iterator():
+        yield stt_pb2.StreamingRecognitionRequest(
+            config=stt_pb2.RecognitionConfig(
+                specification=stt_pb2.RecognitionSpec(
+                    audio_encoding=stt_pb2.RecognitionSpec.LINEAR16_PCM,
+                    sample_rate_hertz=16000,
+                    language_code="ru-RU",
+                    partial_results=True,
+                    single_utterance=True,
+                ),
+                folder_id=folder_id,
+            )
+        )
+        while True:
+            chunk = await queue.get()
+            if chunk is _GRPC_SENTINEL:
+                return
+            yield stt_pb2.StreamingRecognitionRequest(audio_content=chunk)
+
+    # --- Task B: читает gRPC-ответы → шлёт JSON в WebSocket ---
+    async def grpc_reader(stub):
+        final_sent = False
+        try:
+            call = stub.StreamingRecognize(
+                request_iterator(),
+                metadata=[("authorization", f"Api-Key {api_key}")],
+            )
+            async for response in call:
+                for chunk in response.chunks:
+                    text = chunk.alternatives[0].text if chunk.alternatives else ""
+                    if chunk.final:
+                        _log.warning(f"[STT-gRPC] final: {text!r}")
+                        await ws.send_text(json.dumps(
+                            {"type": "final", "text": text}, ensure_ascii=False
+                        ))
+                        final_sent = True
+                        return  # single_utterance=True → один финал на сессию
+                    elif text:
+                        _log.warning(f"[STT-gRPC] partial: {text!r}")
+                        try:
+                            await ws.send_text(json.dumps(
+                                {"type": "partial", "text": text}, ensure_ascii=False
+                            ))
+                        except Exception:
+                            pass
+        except grpc.aio.AioRpcError as e:
+            _log.warning(f"[STT-gRPC] gRPC error: {e.code().name} — {e.details()}")
+            try:
+                await ws.send_text(json.dumps(
+                    {"type": "error", "message": f"STT недоступен: {e.code().name}"},
+                    ensure_ascii=False,
+                ))
+            except Exception:
+                pass
+        finally:
+            # Гарантируем что Android всегда получит final и не зависнет
+            if not final_sent:
+                try:
+                    await ws.send_text(json.dumps(
+                        {"type": "final", "text": ""}, ensure_ascii=False
+                    ))
+                except Exception:
+                    pass
+
+    _log.warning(f"[STT-gRPC] session start, folder_id={folder_id!r}")
+    creds = grpc.ssl_channel_credentials()
+    async with grpc.aio.secure_channel(_GRPC_ENDPOINT, creds) as channel:
+        stub = stt_pb2_grpc.SttServiceStub(channel)
+        await asyncio.gather(ws_reader(), grpc_reader(stub))
+
+    try:
+        await ws.close()
+    except Exception:
+        pass
+
+
 async def _stt_stream(ws: WebSocket, api_key: str):
     """
-    STT через Яндекс SpeechKit REST API (v1/stt:recognize).
-    Аудио-чанки (PCM 16kHz/16bit/mono) накапливаются из WebSocket.
-    Partial: каждую секунду накопленного аудио → REST-запрос → {"type":"partial"}.
-    Final: по закрытию WebSocket → финальный REST-запрос → {"type":"final"}.
+    [УСТАРЕВШИЙ] STT через Яндекс SpeechKit REST API (v1/stt:recognize).
+    Оставлен для возможности быстрого отката. Используется _stt_stream_grpc.
+    Проблема: отправляет весь накопленный буфер на каждой итерации → 4-6x переплата.
     """
     import httpx
 
