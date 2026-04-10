@@ -3,6 +3,7 @@ package com.vtbvita.widget
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import com.vtbvita.widget.BuildConfig
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.sp
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import com.vtbvita.widget.ui.theme.VtbBlue
 import com.vtbvita.widget.ui.theme.VtbBlueMid
+import timber.log.Timber
 
 data class Persona(
     val id: String,
@@ -73,6 +75,10 @@ val PERSONAS = listOf(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+        }
 
         // Телефон не верифицирован → экран верификации
         if (!SessionManager.hasAppToken(this)) {

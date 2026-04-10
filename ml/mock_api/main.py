@@ -28,6 +28,20 @@ from yandex_speech import stt_pb2, stt_pb2_grpc
 load_dotenv()
 
 # ---------------------------------------------------------------------------
+# Logging — stdlib, низкий overhead; INFO не логирует VAD-уровень debug-шум
+# ---------------------------------------------------------------------------
+
+import logging
+import time
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+_log = logging.getLogger("vita.api")
+
+# ---------------------------------------------------------------------------
 # Config from environment
 # ---------------------------------------------------------------------------
 
@@ -496,15 +510,6 @@ _RE_TRANSFER_VAN = re.compile(
 _TOPUP_VERBS = r"(?:пополни(?:ть)?|положи(?:ть)?\s+(?:деньги\s+)?на\s+(?:телефон|номер))"
 _RE_TOPUP = re.compile(
     r"(?:" + _TOPUP_VERBS + r")"
-    r"(?:\s+(?:мне|себе))?"                             # «пополни мне телефон»
-    r"(?:\s+(?:телефон|номер))?"
-    r"(?:\s+([\+\d][\d\s\-\(\)]{7,15}))?"              # группа 1: телефон (опционально)
-    r"(?:\s+(?:на\s+)?)?" + _AMT_GROUP.replace("(", "(?:", 1),  # группа без захвата, захватываем ниже
-    _RF,
-)
-# Упрощаем topup — отдельный паттерн с явным захватом суммы
-_RE_TOPUP = re.compile(
-    r"(?:" + _TOPUP_VERBS + r")"
     r"(?:\s+(?:мне|себе))?"
     r"(?:\s+(?:телефон|номер))?"
     r"(?:\s+([\+\d][\d\s\-\(\)]{7,15}))?"
@@ -670,11 +675,13 @@ def _regex_parse(text: str) -> Optional[dict]:
 async def _llm_parse(text: str) -> dict:
     """L2: полный LLM-парсинг через DeepSeek / OpenRouter."""
     import httpx
-    import json as _json
 
     api_key = os.getenv("DEEPSEEK_API_KEY", "")
     if not api_key:
+        _log.warning("LLM fallback triggered but DEEPSEEK_API_KEY not set, returning unknown")
         return _make_result("unknown", confidence=0.0)
+
+    _log.info("LLM fallback: text=%r", text)
 
     payload = {
         "model": "deepseek/deepseek-chat",
@@ -698,12 +705,16 @@ async def _llm_parse(text: str) -> dict:
         )
 
     if resp.status_code != 200:
+        _log.error("LLM error: status=%s body=%r", resp.status_code, resp.text[:300])
         raise HTTPException(status_code=502, detail=f"OpenRouter error: {resp.text}")
 
     try:
         content = resp.json()["choices"][0]["message"]["content"]
-        return _json.loads(content)
+        result = json.loads(content)
+        _log.info("LLM result: intent=%s confidence=%s", result.get("intent"), result.get("confidence"))
+        return result
     except Exception as e:
+        _log.error("LLM parse error: %s", e)
         raise HTTPException(status_code=502, detail=f"Parse error: {e}")
 
 
@@ -769,13 +780,21 @@ async def parse_command(req: ParseRequest):
 
     Не требует JWT — парсинг не касается банковских данных.
     """
+    t0 = time.perf_counter()
+
     # L1: regex fast path
     result = _regex_parse(req.text)
     if result and result.get("confidence", 0) >= 0.85:
+        ms = int((time.perf_counter() - t0) * 1000)
+        _log.info("L1 hit: intent=%s confidence=%.2f text=%r latency=%dms",
+                  result["intent"], result["confidence"], req.text, ms)
         return ParseResult(**{k: result.get(k) for k in ParseResult.model_fields})
 
     # L2: LLM fallback
+    _log.info("L1 miss → LLM fallback: text=%r", req.text)
     data = await _llm_parse(req.text)
+    ms = int((time.perf_counter() - t0) * 1000)
+    _log.info("L2 result: intent=%s latency=%dms", data.get("intent"), ms)
     return ParseResult(**{k: data.get(k) for k in ParseResult.model_fields})
 
 
@@ -798,12 +817,14 @@ def auth(req: AuthRequest, _: None = Depends(_check_app_token)):
     Требует X-Api-Key (app_token) — чтобы только верифицированные устройства могли войти.
     """
     if not ALLOWED_PIN or req.pin != ALLOWED_PIN:
+        _log.warning("auth: PIN mismatch")
         raise HTTPException(status_code=403, detail="Неверный PIN")
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MIN)
     token = jwt.encode(
         {"type": "banking_access", "exp": expire},
         JWT_SECRET, algorithm="HS256"
     )
+    _log.info("auth: banking token issued, expires_in=%ds", JWT_EXPIRE_MIN * 60)
     return AuthResponse(banking_token=token, expires_in_seconds=JWT_EXPIRE_MIN * 60)
 
 
@@ -838,6 +859,7 @@ def verify_phone(req: PhoneVerifyRequest):
     """
     normalized = _normalize_phone(req.phone)
     if normalized not in ALLOWED_PHONES:
+        _log.warning("verify-phone: rejected phone=%r", req.phone)
         raise HTTPException(status_code=403, detail="Номер не найден")
 
     expire = datetime.now(timezone.utc) + timedelta(days=30)
@@ -846,6 +868,7 @@ def verify_phone(req: PhoneVerifyRequest):
         JWT_SECRET,
         algorithm="HS256",
     )
+    _log.info("verify-phone: app token issued for phone=%r", normalized)
     return PhoneVerifyResponse(app_token=token)
 
 
@@ -892,6 +915,9 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
     ts = _now()
     accounts = _accounts_for_response()
     default_acc = MOCK_ACCOUNTS[0]
+
+    _log.info("command: txn=%s intent=%s amount=%s recipient=%r phone=%r",
+              txn_id, req.intent, req.amount, req.recipient, req.phone)
 
     # --- transfer ---
     if req.intent == "transfer":
@@ -1000,6 +1026,7 @@ def confirm(transaction_id: str, req: ConfirmRequest, _: None = Depends(_check_b
     """
     pending = _pending.pop(transaction_id, None)
     if pending is None:
+        _log.warning("confirm: txn=%s not found (already executed or expired)", transaction_id)
         raise HTTPException(status_code=404, detail="Операция не найдена или уже выполнена")
 
     ts = _now()
@@ -1012,6 +1039,9 @@ def confirm(transaction_id: str, req: ConfirmRequest, _: None = Depends(_check_b
 
     balance_after = round(source_account["balance"] - amount, 2)
     source_account["balance"] = balance_after
+
+    _log.info("confirm: txn=%s intent=%s amount=%.2f account=%s balance_after=%.2f",
+              transaction_id, intent, amount, req.source_account_id, balance_after)
 
     bank_label = f" через {req.selected_bank}" if req.selected_bank else ""
 
@@ -1058,11 +1088,9 @@ def confirm(transaction_id: str, req: ConfirmRequest, _: None = Depends(_check_b
 
 @app.websocket("/ws/stt")
 async def stt_endpoint(ws: WebSocket):
-    import logging as _log
-    _log.warning("[STT] stt_endpoint called, accepting...")
     await ws.accept()
     api_key = os.getenv("YANDEX_SPEECHKIT_API_KEY", "").strip()
-    _log.warning(f"[STT] endpoint: api_key={'SET' if api_key else 'EMPTY'}")
+    _log.info("STT session: mode=%s", "grpc" if api_key else "mock")
     if not api_key:
         await _stt_mock(ws)
     else:
@@ -1123,7 +1151,6 @@ async def _stt_stream_grpc(ws: WebSocket, api_key: str):
     Биллинг: одна сессия = одна единица тарификации (не N REST-запросов).
     Android-сторона не меняется — WebSocket-протокол идентичен.
     """
-    import logging as _log
     folder_id = os.getenv("YANDEX_FOLDER_ID", "").strip()
     queue: asyncio.Queue = asyncio.Queue(maxsize=50)
 
@@ -1141,7 +1168,7 @@ async def _stt_stream_grpc(ws: WebSocket, api_key: str):
                 if raw:
                     await queue.put(raw)
         except (asyncio.TimeoutError, WebSocketDisconnect):
-            _log.warning("[STT-gRPC] ws_reader: timeout or disconnect")
+            _log.info("STT-gRPC ws_reader: timeout or disconnect")
         finally:
             await queue.put(_GRPC_SENTINEL)
 
@@ -1177,14 +1204,14 @@ async def _stt_stream_grpc(ws: WebSocket, api_key: str):
                 for chunk in response.chunks:
                     text = chunk.alternatives[0].text if chunk.alternatives else ""
                     if chunk.final:
-                        _log.warning(f"[STT-gRPC] final: {text!r}")
+                        _log.info("STT-gRPC final: %r", text)
                         await ws.send_text(json.dumps(
                             {"type": "final", "text": text}, ensure_ascii=False
                         ))
                         final_sent = True
                         return  # single_utterance=True → один финал на сессию
                     elif text:
-                        _log.warning(f"[STT-gRPC] partial: {text!r}")
+                        _log.debug("STT-gRPC partial: %r", text)
                         try:
                             await ws.send_text(json.dumps(
                                 {"type": "partial", "text": text}, ensure_ascii=False
@@ -1192,7 +1219,7 @@ async def _stt_stream_grpc(ws: WebSocket, api_key: str):
                         except Exception:
                             pass
         except grpc.aio.AioRpcError as e:
-            _log.warning(f"[STT-gRPC] gRPC error: {e.code().name} — {e.details()}")
+            _log.error("STT-gRPC error: %s — %s", e.code().name, e.details())
             try:
                 await ws.send_text(json.dumps(
                     {"type": "error", "message": f"STT недоступен: {e.code().name}"},
@@ -1210,7 +1237,7 @@ async def _stt_stream_grpc(ws: WebSocket, api_key: str):
                 except Exception:
                     pass
 
-    _log.warning(f"[STT-gRPC] session start, folder_id={folder_id!r}")
+    _log.info("STT-gRPC session start, folder_id=%r", folder_id)
     creds = grpc.ssl_channel_credentials()
     async with grpc.aio.secure_channel(_GRPC_ENDPOINT, creds) as channel:
         stub = stt_pb2_grpc.SttServiceStub(channel)
@@ -1222,105 +1249,3 @@ async def _stt_stream_grpc(ws: WebSocket, api_key: str):
         pass
 
 
-async def _stt_stream(ws: WebSocket, api_key: str):
-    """
-    [УСТАРЕВШИЙ] STT через Яндекс SpeechKit REST API (v1/stt:recognize).
-    Оставлен для возможности быстрого отката. Используется _stt_stream_grpc.
-    Проблема: отправляет весь накопленный буфер на каждой итерации → 4-6x переплата.
-    """
-    import httpx
-
-    SAMPLE_RATE    = 16_000
-    BYTES_PER_SEC  = SAMPLE_RATE * 2          # 16-bit mono
-    PARTIAL_EVERY  = BYTES_PER_SEC            # partial раз в ~1 сек
-
-    folder_id = os.getenv("YANDEX_FOLDER_ID", "").strip()
-
-    async def _recognize(pcm: bytes) -> str:
-        """Отправляет сырой PCM в Яндекс SpeechKit REST API (format=lpcm)."""
-        import logging as _log
-        params = {
-            "lang":             "ru-RU",
-            "topic":            "general",
-            "format":           "lpcm",
-            "sampleRateHertz":  "16000",
-        }
-        if folder_id:
-            params["folderId"] = folder_id
-        _log.warning(f"[STT] _recognize: pcm={len(pcm)}b folder_id={folder_id!r}")
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize",
-                headers={
-                    "Authorization": f"Api-Key {api_key}",
-                    "Content-Type":  "application/octet-stream",
-                },
-                params=params,
-                content=pcm,
-            )
-        _log.warning(f"[STT] Yandex response: status={resp.status_code}, body={resp.text[:300]!r}")
-        if resp.status_code == 200:
-            return resp.json().get("result", "")
-        return ""
-
-    import logging as _log
-    _log.warning(f"[STT] _stt_stream started, folder_id={folder_id!r}")
-
-    audio_chunks: list[bytes] = []
-    total_bytes       = 0
-    last_partial_bytes = 0
-
-    try:
-        while True:
-            try:
-                data = await asyncio.wait_for(ws.receive(), timeout=30.0)
-            except asyncio.TimeoutError:
-                _log.warning("[STT] receive timeout")
-                break
-            if data["type"] == "websocket.disconnect":
-                break
-            # Клиент явно сигнализирует конец аудио — выходим и отвечаем финалом
-            if data.get("text") == "DONE":
-                _log.warning("[STT] received DONE signal")
-                break
-            raw = data.get("bytes")
-            if raw:
-                audio_chunks.append(raw)
-                total_bytes += len(raw)
-                # Partial: каждую секунду аудио
-                if total_bytes - last_partial_bytes >= PARTIAL_EVERY:
-                    last_partial_bytes = total_bytes
-                    text = await _recognize(b"".join(audio_chunks))
-                    if text:
-                        try:
-                            await ws.send_text(json.dumps(
-                                {"type": "partial", "text": text},
-                                ensure_ascii=False
-                            ))
-                        except Exception:
-                            pass  # client disconnected
-    except WebSocketDisconnect:
-        pass
-
-    # Final
-    combined = b"".join(audio_chunks)
-    import logging as _log
-    _log.warning(f"[STT] session ended: total_bytes={total_bytes}, chunks={len(audio_chunks)}")
-    if combined:
-        text = ""
-        try:
-            text = await _recognize(combined)
-        except Exception as exc:
-            print(f"[STT] _recognize exception: {exc}")
-        try:
-            await ws.send_text(json.dumps(
-                {"type": "final", "text": text or ""},
-                ensure_ascii=False
-            ))
-        except Exception:
-            pass  # client already disconnected
-
-    try:
-        await ws.close()
-    except Exception:
-        pass

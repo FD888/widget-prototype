@@ -11,8 +11,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
-import android.util.Log
 import android.widget.RemoteViews
+import timber.log.Timber
 import androidx.core.app.NotificationCompat
 import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.nlp.NlpService
@@ -33,7 +33,6 @@ class VoiceRecordingService : Service() {
         const val ACTION_STOP   = "com.vtbvita.widget.ACTION_VOICE_STOP"   // отмена
         const val ACTION_SUBMIT = "com.vtbvita.widget.ACTION_VOICE_SUBMIT" // стоп + отправить
 
-        private const val TAG        = "VoiceService"
         private const val NOTIF_ID   = 9001
         private const val CHANNEL_ID = "vita_recording"
 
@@ -92,14 +91,14 @@ class VoiceRecordingService : Service() {
         if (recorder != null) return
         cancelled = false
         submitted = false
-        Log.d(TAG, "beginRecording")
+        Timber.i("beginRecording")
 
         startForeground(NOTIF_ID, buildNotification())
         VitaWidgetProvider.showPreparing(this)
 
         recorder = VoiceStreamingRecorder(
             onReady   = {
-                Log.d(TAG, "recorder ready → RECORDING")
+                Timber.i("recorder ready → RECORDING")
                 VitaWidgetProvider.showRecording(this, "")
                 startAnimation()
                 startVAD()
@@ -109,14 +108,14 @@ class VoiceRecordingService : Service() {
             },
             onFinal   = { text ->
                 if (!cancelled) {
-                    Log.d(TAG, "onFinal: '$text'")
+                    Timber.i("onFinal: '%s'", text)
                     stopAnimation()
                     finishRecording(text)
                 }
             },
             onError   = { msg ->
                 if (!cancelled) {
-                    Log.e(TAG, "recorder error: $msg")
+                    Timber.e("recorder error: %s", msg)
                     stopAnimation()
                     @Suppress("DEPRECATION") stopForeground(true)
                     VitaWidgetProvider.resetToIdle(this)
@@ -128,7 +127,7 @@ class VoiceRecordingService : Service() {
     }
 
     private fun cancelRecording() {
-        Log.d(TAG, "cancelRecording")
+        Timber.i("cancelRecording")
         cancelled = true
         stopAnimation()
         stopVAD()
@@ -142,7 +141,7 @@ class VoiceRecordingService : Service() {
     private fun submitRecording() {
         if (submitted) return
         submitted = true
-        Log.d(TAG, "submitRecording")
+        Timber.i("submitRecording")
         stopAnimation()
         stopVAD()
         // Показываем спиннер пока сервер обрабатывает финальный аудио
@@ -170,13 +169,13 @@ class VoiceRecordingService : Service() {
             VitaWidgetProvider.resetToIdle(this@VoiceRecordingService)
 
             result.onFailure {
-                Log.e(TAG, "NLP failed: ${it.message}")
+                Timber.e("NLP failed: %s", it.message)
                 stopSelf()
                 return@launch
             }
 
             val parsed = result.getOrThrow()
-            Log.d(TAG, "NLP intent=${parsed.intent}")
+            Timber.i("NLP intent=%s confidence=%.2f", parsed.intent, parsed.confidence)
 
             when (parsed.intent) {
                 "open_app" -> {
@@ -208,7 +207,7 @@ class VoiceRecordingService : Service() {
                         }
                     )
                 }
-                else -> Log.d(TAG, "Unknown intent '${parsed.intent}', discarding")
+                else -> Timber.w("Unknown intent '%s', discarding", parsed.intent)
             }
 
             stopSelf()
@@ -233,14 +232,14 @@ class VoiceRecordingService : Service() {
             var inSilence           = false
 
             var logCounter = 0
-            Log.d(TAG, "VAD started, threshold=$VAD_SILENCE_THRESHOLD")
+            Timber.d("VAD started, threshold=%s", VAD_SILENCE_THRESHOLD)
             while (isActive) {
                 delay(VAD_POLL_MS)
                 val amp = recorder?.amplitude ?: 0.08f
 
                 // Логируем каждые ~300мс для калибровки
                 if (++logCounter % 5 == 0) {
-                    Log.d(TAG, "VAD amp=${"%.3f".format(amp)} speech=${speechAccumulatedMs}ms inSilence=$inSilence")
+                    Timber.d("VAD amp=%.3f speech=%dms inSilence=%b", amp, speechAccumulatedMs, inSilence)
                 }
 
                 if (amp >= VAD_SILENCE_THRESHOLD) {
@@ -254,11 +253,11 @@ class VoiceRecordingService : Service() {
                         if (!inSilence) {
                             inSilence = true
                             silenceStartMs = SystemClock.uptimeMillis()
-                            Log.d(TAG, "VAD: silence started (speech=${speechAccumulatedMs}ms)")
+                            Timber.d("VAD: silence started (speech=%dms)", speechAccumulatedMs)
                         } else {
                             val silenceDuration = SystemClock.uptimeMillis() - silenceStartMs
                             if (silenceDuration >= VAD_SILENCE_MS) {
-                                Log.d(TAG, "VAD: silence ${silenceDuration}ms → auto-submit")
+                                Timber.i("VAD: silence %dms → auto-submit", silenceDuration)
                                 submitRecording()
                                 break
                             }

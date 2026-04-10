@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import timber.log.Timber
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -175,8 +176,10 @@ object MockApiService {
         val text = stream?.bufferedReader()?.readText() ?: "{}"
         if (code !in 200..299) {
             val detail = runCatching { JSONObject(text).getString("detail") }.getOrDefault(text)
+            Timber.e("API error: %s %d — %s", url.path, code, detail)
             throw Exception(detail)
         }
+        Timber.d("API ok: %s %d", url.path, code)
         return JSONObject(text)
     }
 

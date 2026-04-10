@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
+import timber.log.Timber
 
 class VitaWidgetProvider : AppWidgetProvider() {
 
@@ -62,6 +63,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
 
         /** PREPARING: спиннер + "Подготовка…" + кнопка отмены справа. */
         fun showPreparing(context: Context) {
+            Timber.d("widget → PREPARING")
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
@@ -86,6 +88,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
          * partiallyUpdateAppWidget() для колец.
          */
         fun showRecording(context: Context, partialText: String) {
+            Timber.d("widget → RECORDING")
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
@@ -113,7 +116,10 @@ class VitaWidgetProvider : AppWidgetProvider() {
         }
 
         /** Сброс в IDLE. */
-        fun resetToIdle(context: Context) = updateAll(context, defaultViews(context))
+        fun resetToIdle(context: Context) {
+            Timber.d("widget → IDLE")
+            updateAll(context, defaultViews(context))
+        }
 
         /** Скрывает капсулу пока открыт InputActivity (текстовый режим). */
         fun hideWidget(context: Context) {
@@ -125,6 +131,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
 
         /** Показывает строку статуса на ~10 секунд, затем сбрасывает виджет. */
         fun showStatus(context: Context, text: String) {
+            Timber.i("widget → STATUS: %s", text)
             val statusViews = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)

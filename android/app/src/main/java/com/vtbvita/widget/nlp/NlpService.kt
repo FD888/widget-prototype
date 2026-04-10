@@ -6,6 +6,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import timber.log.Timber
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -29,6 +30,7 @@ object NlpService {
     suspend fun parse(text: String, context: Context): Result<ParsedIntent> =
         withContext(Dispatchers.IO) {
             runCatching {
+                Timber.d("NLP parse: text='%s'", text)
                 val appToken = SessionManager.getAppToken(context)
                 val body = JSONObject().apply { put("text", text) }
                 val conn = URL("${BuildConfig.MOCK_API_BASE_URL}/parse")
@@ -46,8 +48,10 @@ object NlpService {
 
                 val json = JSONObject(conn.inputStream.bufferedReader().readText())
 
+                val intentStr = json.optString("intent", "unknown")
+                Timber.i("NLP result: intent=%s confidence=%.2f", intentStr, json.optDouble("confidence", 0.0))
                 ParsedIntent(
-                    intent          = json.optString("intent", "unknown"),
+                    intent          = intentStr,
                     recipient       = json.optString("recipient").takeIf { it.isNotEmpty() },
                     amount          = json.optDouble("amount").takeIf { !it.isNaN() },
                     phone           = json.optString("phone").takeIf { it.isNotEmpty() },

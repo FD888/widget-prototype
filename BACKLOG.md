@@ -77,6 +77,9 @@ C-02 + C-03 → C-05
 | 2026-04-04 | ContactMatcher: нечёткий поиск + scoring (0.8/0.3 порог однозначности) | "паше коноплеву" → токены → LIKE-запрос → scoring; контакты не покидают телефон |
 | 2026-04-04 | TransferDetailsActivity: слать номер телефона в /command вместо имени | Сервер ищет по _PHONE_INDEX — надёжнее чем по имени с дательным падежом |
 | 2026-04-04 | ContactMatcher scoring: Jaccard matched/max(tokens,parts) вместо fixed weights | "мама" (1 слово) → 1.0 vs "мама Саши" (2 слова) → 0.5; gap 0.5 ≥ 0.3 → auto-resolve |
+| 2026-04-10 | Android: Timber вместо Log.d (инициализация в MainActivity.onCreate) | Автоочистка логов в release-сборке без ручного --log-level |
+| 2026-04-10 | Python: stdlib logging с форматом HH:MM:SS + уровень INFO для ops-событий | Нет доп. зависимостей, нет overhead для продакшена |
+| 2026-04-10 | CI: GitHub Actions (test-python + build-android) на push/PR в main | Задача C-01 помечала «CI пропущен осознанно — нет тестов»; теперь тесты есть |
 | 2026-04-04 | ContactMemory: boost score на основе истории выборов (count≥3 → +0.5 → auto-resolve) | Позволяет виджету обучаться на предпочтениях пользователя без сервера |
 | 2026-04-04 | VoiceStreamingRecorder: WebSocket + PCM 16kHz → Яндекс SpeechKit через прокси-сервер | Потоковый STT вместо batch записи — partial/final результаты в реальном времени |
 | 2026-04-10 | BiometricHelper: реальный BiometricPrompt + /auth/biometric endpoint | Демо показывает нативную биометрию устройства |

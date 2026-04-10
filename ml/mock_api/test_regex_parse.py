@@ -1,10 +1,9 @@
 """
-Unit-тесты для L1 regex-парсера.
-Запуск: python3 test_regex_parse.py
+Unit-тесты для L1 regex-парсера и вспомогательных функций.
+Запуск: pytest test_regex_parse.py -v
 """
-import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
+import pytest
 
 os.environ.setdefault("APP_API_KEY", "test")
 os.environ.setdefault("JWT_SECRET", "test")
@@ -13,204 +12,241 @@ os.environ.setdefault("ALLOWED_PIN", "1234")
 
 from main import _regex_parse, _parse_amount, _normalize_text
 
-PASS = 0
-FAIL = 0
 
-def check(label: str, condition: bool, detail: str = ""):
-    global PASS, FAIL
-    if condition:
-        print(f"  PASS  {label}")
-        PASS += 1
-    else:
-        print(f"  FAIL  {label}" + (f" — {detail}" if detail else ""))
-        FAIL += 1
+# ─── Нормализация текста ──────────────────────────────────────────────────────
 
-def section(name: str):
-    print(f"\n{'─'*50}")
-    print(f"  {name}")
-    print(f"{'─'*50}")
+def test_normalize_lowercase_and_yo():
+    assert _normalize_text("Переведи Маше") == "переведи маше"
+
+def test_normalize_strips_punctuation():
+    assert "пожалуйста," not in _normalize_text("переведи, пожалуйста")
+
+def test_normalize_strips_whitespace():
+    assert _normalize_text("  баланс  ") == "баланс"
+
+def test_normalize_strips_exclamation():
+    assert _normalize_text("баланс!") == "баланс"
 
 
-# ─────────────────────────────────────────────────
-section("Нормализация текста")
-# ─────────────────────────────────────────────────
-check("ё→е",       _normalize_text("Переведи Маше") == "переведи маше")
-check("пунктуация","пожалуйста," not in _normalize_text("переведи, пожалуйста"))
-check("пробелы",   _normalize_text("  баланс  ") == "баланс")
-check("восклицание", _normalize_text("баланс!") == "баланс")
+# ─── _parse_amount: числовые ─────────────────────────────────────────────────
+
+def test_parse_amount_simple():
+    assert _parse_amount("500") == 500.0
+
+def test_parse_amount_space_separator():
+    assert _parse_amount("1 000") == 1000.0
+
+def test_parse_amount_comma_decimal():
+    assert _parse_amount("1,5") == 1.5
+
+def test_parse_amount_tys():
+    assert _parse_amount("2 тыс") == 2000.0
+
+def test_parse_amount_tysyachi():
+    assert _parse_amount("3 тысячи") == 3000.0
+
+def test_parse_amount_mln():
+    assert _parse_amount("1 млн") == 1_000_000.0
 
 
-# ─────────────────────────────────────────────────
-section("_parse_amount — числовые")
-# ─────────────────────────────────────────────────
-check("простое число",         _parse_amount("500") == 500.0)
-check("число с пробелом",      _parse_amount("1 000") == 1000.0)
-check("число с запятой",       _parse_amount("1,5") == 1.5)
-check("число + тыс",           _parse_amount("2 тыс") == 2000.0)
-check("число + тысячи",        _parse_amount("3 тысячи") == 3000.0)
-check("число + млн",           _parse_amount("1 млн") == 1_000_000.0)
+# ─── _parse_amount: словесные ─────────────────────────────────────────────────
+
+def test_parse_amount_pyatsot():
+    assert _parse_amount("пятьсот") == 500.0
+
+def test_parse_amount_tysyachu():
+    assert _parse_amount("тысячу") == 1000.0
+
+def test_parse_amount_tri_tysyachi():
+    assert _parse_amount("три тысячи") == 3000.0
+
+def test_parse_amount_poltory_tysyachi():
+    assert _parse_amount("полторы тысячи") == 1500.0
+
+def test_parse_amount_dve_tysyachi():
+    assert _parse_amount("две тысячи") == 2000.0
+
+def test_parse_amount_dvesti():
+    assert _parse_amount("двести") == 200.0
+
+def test_parse_amount_no_number_returns_none():
+    assert _parse_amount("текст без цифр") is None
 
 
-# ─────────────────────────────────────────────────
-section("_parse_amount — словесные (новое)")
-# ─────────────────────────────────────────────────
-check("пятьсот",               _parse_amount("пятьсот") == 500.0)
-check("тысячу (одиночно)",     _parse_amount("тысячу") == 1000.0)
-check("три тысячи",            _parse_amount("три тысячи") == 3000.0)
-check("полторы тысячи",        _parse_amount("полторы тысячи") == 1500.0)
-check("две тысячи",            _parse_amount("две тысячи") == 2000.0)
-check("двести",                _parse_amount("двести") == 200.0)
-check("нет числа → None",      _parse_amount("текст без цифр") is None)
+# ─── Balance ─────────────────────────────────────────────────────────────────
 
-
-# ─────────────────────────────────────────────────
-section("Balance")
-# ─────────────────────────────────────────────────
-for phrase in ["баланс", "покажи баланс", "мой баланс", "сколько денег", "сколько на карте"]:
+@pytest.mark.parametrize("phrase", [
+    "баланс", "покажи баланс", "мой баланс", "сколько денег", "сколько на карте"
+])
+def test_balance_basic(phrase):
     r = _regex_parse(phrase)
-    check(f"'{phrase}'", r is not None and r["intent"] == "balance")
+    assert r is not None and r["intent"] == "balance"
 
-check("ё в запросе",   _regex_parse("покажи баланс")["intent"] == "balance")
-check("с пунктуацией", _regex_parse("баланс!")["intent"] == "balance")
-# Не должен матчить «баланс Маши»
-r = _regex_parse("покажи баланс маши")
-check("'баланс маши' → не balance", r is None or r["intent"] != "balance")
+def test_balance_with_yo():
+    assert _regex_parse("покажи баланс")["intent"] == "balance"
 
+def test_balance_with_punctuation():
+    assert _regex_parse("баланс!")["intent"] == "balance"
 
-# ─────────────────────────────────────────────────
-section("Transfer — числовые суммы")
-# ─────────────────────────────────────────────────
-r = _regex_parse("переведи Маше 500")
-check("переведи Маше 500", r and r["intent"] == "transfer" and r["recipient"] == "маше" and r["amount"] == 500.0)
-
-r = _regex_parse("переведи 500 Маше")
-check("переведи 500 Маше (VAN)", r and r["intent"] == "transfer" and r["amount"] == 500.0)
-
-r = _regex_parse("скинь Маше 1000")
-check("скинь Маше 1000", r and r["intent"] == "transfer" and r["amount"] == 1000.0)
+# Негативные: НЕ должен матчить «баланс Маши» как balance
+def test_balance_with_name_not_balance():
+    r = _regex_parse("покажи баланс маши")
+    assert r is None or r["intent"] != "balance"
 
 
-# ─────────────────────────────────────────────────
-section("Transfer — новые глаголы (новое)")
-# ─────────────────────────────────────────────────
-for verb in ["кинь", "закинь", "перекинь", "пришли", "отправь"]:
+# ─── Transfer: числовые суммы ─────────────────────────────────────────────────
+
+def test_transfer_verb_name_amount():
+    r = _regex_parse("переведи Маше 500")
+    assert r and r["intent"] == "transfer"
+    assert r["recipient"] == "маше"
+    assert r["amount"] == 500.0
+
+def test_transfer_verb_amount_name():
+    r = _regex_parse("переведи 500 Маше")
+    assert r and r["intent"] == "transfer"
+    assert r["amount"] == 500.0
+
+def test_transfer_verb_skin():
+    r = _regex_parse("скинь Маше 1000")
+    assert r and r["intent"] == "transfer" and r["amount"] == 1000.0
+
+@pytest.mark.parametrize("verb", ["кинь", "закинь", "перекинь", "пришли", "отправь"])
+def test_transfer_additional_verbs(verb):
     r = _regex_parse(f"{verb} маше 500")
-    check(f"'{verb} маше 500'", r and r["intent"] == "transfer" and r["amount"] == 500.0)
+    assert r and r["intent"] == "transfer" and r["amount"] == 500.0
 
 
-# ─────────────────────────────────────────────────
-section("Transfer — словесные суммы (новое)")
-# ─────────────────────────────────────────────────
-r = _regex_parse("переведи маше пятьсот")
-check("переведи маше пятьсот", r and r["intent"] == "transfer" and r["amount"] == 500.0)
+# ─── Transfer: словесные суммы ───────────────────────────────────────────────
 
-r = _regex_parse("кинь маше три тысячи")
-check("кинь маше три тысячи", r and r["intent"] == "transfer" and r["amount"] == 3000.0)
+def test_transfer_verbal_pyatsot():
+    r = _regex_parse("переведи маше пятьсот")
+    assert r and r["intent"] == "transfer" and r["amount"] == 500.0
 
-r = _regex_parse("переведи маше полторы тысячи")
-check("переведи маше полторы тысячи", r and r["intent"] == "transfer" and r["amount"] == 1500.0)
+def test_transfer_verbal_tri_tysyachi():
+    r = _regex_parse("кинь маше три тысячи")
+    assert r and r["intent"] == "transfer" and r["amount"] == 3000.0
 
-r = _regex_parse("отправь маше тысячу")
-check("отправь маше тысячу", r and r["intent"] == "transfer" and r["amount"] == 1000.0)
+def test_transfer_verbal_poltory():
+    r = _regex_parse("переведи маше полторы тысячи")
+    assert r and r["intent"] == "transfer" and r["amount"] == 1500.0
 
-
-# ─────────────────────────────────────────────────
-section("Transfer — стоп-слова (новое)")
-# ─────────────────────────────────────────────────
-r = _regex_parse("переведи пожалуйста маше 500")
-check("переведи пожалуйста маше 500 (стоп-слово)", r and r["intent"] == "transfer" and r["recipient"] == "маше")
-
-r = _regex_parse("переведи срочно маше 1000")
-check("переведи срочно маше 1000", r and r["intent"] == "transfer" and r["recipient"] == "маше")
+def test_transfer_verbal_tysyachu():
+    r = _regex_parse("отправь маше тысячу")
+    assert r and r["intent"] == "transfer" and r["amount"] == 1000.0
 
 
-# ─────────────────────────────────────────────────
-section("Transfer — fall-through (нет суммы)")
-# ─────────────────────────────────────────────────
-check("переведи маше → None",       _regex_parse("переведи маше") is None)
-check("переведи деньги → None",     _regex_parse("переведи деньги") is None)
-check("кинь маше → None",           _regex_parse("кинь маше") is None)
+# ─── Transfer: стоп-слова ────────────────────────────────────────────────────
+
+def test_transfer_with_pozhaluysta():
+    r = _regex_parse("переведи пожалуйста маше 500")
+    assert r and r["intent"] == "transfer" and r["recipient"] == "маше"
+
+def test_transfer_with_srochno():
+    r = _regex_parse("переведи срочно маше 1000")
+    assert r and r["intent"] == "transfer" and r["recipient"] == "маше"
 
 
-# ─────────────────────────────────────────────────
-section("Topup")
-# ─────────────────────────────────────────────────
-r = _regex_parse("пополни телефон на 300")
-check("пополни телефон на 300", r and r["intent"] == "topup" and r["amount"] == 300.0)
+# ─── Transfer: fall-through (нет суммы) ──────────────────────────────────────
 
-r = _regex_parse("пополни мне телефон на 500")
-check("пополни мне телефон на 500 (новое)", r and r["intent"] == "topup" and r["amount"] == 500.0)
+def test_transfer_no_amount_returns_none():
+    assert _regex_parse("переведи маше") is None
 
-check("пополни телефон → None", _regex_parse("пополни телефон") is None)
+def test_transfer_money_word_no_amount_returns_none():
+    assert _regex_parse("переведи деньги") is None
 
-
-# ─────────────────────────────────────────────────
-section("Alarm — числовое время")
-# ─────────────────────────────────────────────────
-r = _regex_parse("поставь будильник на 7:30")
-check("7:30", r and r["intent"] == "alarm" and r["hour"] == 7 and r["minute"] == 30)
-
-r = _regex_parse("разбуди в 8 часов")
-check("разбуди в 8 часов", r and r["intent"] == "alarm" and r["hour"] == 8)
+def test_transfer_kin_no_amount_returns_none():
+    assert _regex_parse("кинь маше") is None
 
 
-# ─────────────────────────────────────────────────
-section("Alarm — словесное время (новое)")
-# ─────────────────────────────────────────────────
-r = _regex_parse("поставь будильник в полдень")
-check("в полдень → 12:00", r and r["intent"] == "alarm" and r["hour"] == 12 and r["minute"] == 0)
+# ─── Topup ───────────────────────────────────────────────────────────────────
 
-r = _regex_parse("поставь будильник в полночь")
-check("в полночь → 0:00", r and r["intent"] == "alarm" and r["hour"] == 0 and r["minute"] == 0)
+def test_topup_basic():
+    r = _regex_parse("пополни телефон на 300")
+    assert r and r["intent"] == "topup" and r["amount"] == 300.0
 
+def test_topup_with_mne():
+    r = _regex_parse("пополни мне телефон на 500")
+    assert r and r["intent"] == "topup" and r["amount"] == 500.0
 
-# ─────────────────────────────────────────────────
-section("Timer")
-# ─────────────────────────────────────────────────
-r = _regex_parse("таймер на 5 минут")
-check("таймер на 5 минут", r and r["intent"] == "timer" and r["duration_seconds"] == 300)
-
-r = _regex_parse("поставь таймер на 30 секунд")
-check("30 секунд", r and r["intent"] == "timer" and r["duration_seconds"] == 30)
-
-r = _regex_parse("через 10 минут")
-check("через 10 минут (новое)", r and r["intent"] == "timer" and r["duration_seconds"] == 600)
-
-r = _regex_parse("через 2 часа")
-check("через 2 часа (новое)", r and r["intent"] == "timer" and r["duration_seconds"] == 7200)
+def test_topup_no_amount_returns_none():
+    assert _regex_parse("пополни телефон") is None
 
 
-# ─────────────────────────────────────────────────
-section("Open app")
-# ─────────────────────────────────────────────────
-cases = [
+# ─── Alarm: числовое время ───────────────────────────────────────────────────
+
+def test_alarm_hhmm():
+    r = _regex_parse("поставь будильник на 7:30")
+    assert r and r["intent"] == "alarm" and r["hour"] == 7 and r["minute"] == 30
+
+def test_alarm_hours_only():
+    r = _regex_parse("разбуди в 8 часов")
+    assert r and r["intent"] == "alarm" and r["hour"] == 8
+
+
+# ─── Alarm: словесное время ──────────────────────────────────────────────────
+
+def test_alarm_poldyen():
+    r = _regex_parse("поставь будильник в полдень")
+    assert r and r["intent"] == "alarm" and r["hour"] == 12 and r["minute"] == 0
+
+def test_alarm_polnoch():
+    r = _regex_parse("поставь будильник в полночь")
+    assert r and r["intent"] == "alarm" and r["hour"] == 0 and r["minute"] == 0
+
+
+# ─── Timer ───────────────────────────────────────────────────────────────────
+
+def test_timer_minutes():
+    r = _regex_parse("таймер на 5 минут")
+    assert r and r["intent"] == "timer" and r["duration_seconds"] == 300
+
+def test_timer_seconds():
+    r = _regex_parse("поставь таймер на 30 секунд")
+    assert r and r["intent"] == "timer" and r["duration_seconds"] == 30
+
+def test_timer_through_minutes():
+    r = _regex_parse("через 10 минут")
+    assert r and r["intent"] == "timer" and r["duration_seconds"] == 600
+
+def test_timer_through_hours():
+    r = _regex_parse("через 2 часа")
+    assert r and r["intent"] == "timer" and r["duration_seconds"] == 7200
+
+
+# ─── Open app ────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("phrase,slug", [
     ("открой телеграм", "telegram"),
     ("открой ютуб", "youtube"),
     ("запусти вк", "vk"),
-    ("открой телегу", "telegram"),   # новый алиас
-    ("открой вацап", "whatsapp"),    # новый алиас
-]
-for phrase, slug in cases:
+    ("открой телегу", "telegram"),
+    ("открой вацап", "whatsapp"),
+])
+def test_open_app_known(phrase, slug):
     r = _regex_parse(phrase)
-    check(f"'{phrase}'", r and r["intent"] == "open_app" and r["app"] == slug)
+    assert r and r["intent"] == "open_app" and r["app"] == slug
 
-check("неизвестное приложение → None", _regex_parse("открой яндекс го") is None)
-
-
-# ─────────────────────────────────────────────────
-section("Call")
-# ─────────────────────────────────────────────────
-r = _regex_parse("позвони маше")
-check("позвони маше", r and r["intent"] == "call" and r["contact"] == "маше")
+def test_open_app_unknown_returns_none():
+    assert _regex_parse("открой яндекс го") is None
 
 
-# ─────────────────────────────────────────────────
-print(f"\n{'═'*50}")
-total = PASS + FAIL
-print(f"  Итого: {PASS}/{total} пройдено")
-if FAIL:
-    print(f"  ПРОВАЛЕНО: {FAIL}")
-    sys.exit(1)
-else:
-    print("  ВСЕ ТЕСТЫ ПРОЙДЕНЫ")
-print(f"{'═'*50}")
+# ─── Call ────────────────────────────────────────────────────────────────────
+
+def test_call():
+    r = _regex_parse("позвони маше")
+    assert r and r["intent"] == "call" and r["contact"] == "маше"
+
+
+# ─── Негативные тесты (ничто не должно матчиться) ────────────────────────────
+
+@pytest.mark.parametrize("phrase", [
+    "",               # пустая строка
+    "привет",         # приветствие
+    "что ты умеешь",  # вопрос о возможностях
+    "12345",          # просто цифры без глагола
+])
+def test_no_match_for_ambiguous_input(phrase):
+    r = _regex_parse(phrase)
+    # Либо None, либо intent=unknown — не должен уверенно матчить banking intent
+    assert r is None or r.get("intent") == "unknown" or r.get("confidence", 1.0) < 0.85

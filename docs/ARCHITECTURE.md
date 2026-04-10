@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-10*
+*Последнее обновление: 2026-04-10 (code quality pass)*
 
 ### Структура репозитория
 
@@ -60,9 +60,11 @@ widget-prototype/
 │   └── mock_api/
 │       ├── main.py           ← FastAPI: /verify-phone, /auth, /auth/biometric, /parse, /balance, /command, /confirm, /ws/stt
 │       ├── data.py           ← mock-данные (баланс, контакты, счета)
+│       ├── test_regex_parse.py ← pytest: 64 unit-теста L1-парсера
+│       ├── test_api.py       ← pytest: 19 integration-тестов FastAPI (TestClient)
 │       ├── Dockerfile        ← python:3.11-slim, uvicorn
 │       ├── docker-compose.yml← порт 127.0.0.1:8001→8000, env_file
-│       ├── requirements.txt  ← fastapi, uvicorn, httpx, jose, slowapi, grpcio, protobuf
+│       ├── requirements.txt  ← fastapi, uvicorn, httpx, jose, grpcio, protobuf, pytest
 │       ├── .env.example      ← шаблон переменных окружения
 │       ├── gen_proto.sh      ← одноразовая регенерация gRPC-стабов
 │       ├── yandex_speech/    ← сгенерированные proto-стабы (stt_pb2, stt_pb2_grpc)
@@ -72,6 +74,7 @@ widget-prototype/
 │   ├── PRODUCT.md
 │   ├── REQUIREMENTS.md
 │   └── DEPLOY.md             ← инструкция деплоя на VDS, nginx, Docker
+├── .github/workflows/ci.yml  ← GitHub Actions: Python pytest + Android assembleDebug + unit tests
 ├── .claude/skills/           ← model-invoked skills (commit, deploy, plan)
 ├── BACKLOG.md
 ├── CLAUDE.md
