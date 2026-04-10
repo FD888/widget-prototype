@@ -81,3 +81,4 @@ C-02 + C-03 → C-05
 | 2026-04-04 | VoiceStreamingRecorder: WebSocket + PCM 16kHz → Яндекс SpeechKit через прокси-сервер | Потоковый STT вместо batch записи — partial/final результаты в реальном времени |
 | 2026-04-10 | BiometricHelper: реальный BiometricPrompt + /auth/biometric endpoint | Демо показывает нативную биометрию устройства |
 | 2026-04-10 | mock_api: Dockerfile + docker-compose на VDS, сервис доступен на vtb.vibefounder.ru | Изолирован от ТГДОМ, nginx-прокси |
+| 2026-04-10 | STT переведён на gRPC Streaming (Яндекс SpeechKit v2): _stt_stream_grpc + yandex_speech/ | REST давал 4-6x переплату; gRPC — один стрим = один биллинг; partial слово-за-словом |

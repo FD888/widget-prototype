@@ -62,8 +62,10 @@ widget-prototype/
 │       ├── data.py           ← mock-данные (баланс, контакты, счета)
 │       ├── Dockerfile        ← python:3.11-slim, uvicorn
 │       ├── docker-compose.yml← порт 127.0.0.1:8001→8000, env_file
-│       ├── requirements.txt  ← fastapi, uvicorn, httpx, jose, slowapi
+│       ├── requirements.txt  ← fastapi, uvicorn, httpx, jose, slowapi, grpcio, protobuf
 │       ├── .env.example      ← шаблон переменных окружения
+│       ├── gen_proto.sh      ← одноразовая регенерация gRPC-стабов
+│       ├── yandex_speech/    ← сгенерированные proto-стабы (stt_pb2, stt_pb2_grpc)
 │       └── venv/
 ├── docs/
 │   ├── ARCHITECTURE.md
@@ -105,6 +107,7 @@ widget-prototype/
 | PIN-вход | `PinEntryActivity.kt` | ✅ |
 | Mock банковское приложение (5 Compose-экранов) | `MockBankActivity.kt` | ✅ |
 | Mock API (FastAPI) | `ml/mock_api/main.py` | ✅ |
+| STT gRPC Streaming (Яндекс SpeechKit v2) | `ml/mock_api/main.py` + `yandex_speech/` | ✅ |
 | NLP intent parsing | `ml/` (C-02) | 🔄 in progress (Яна) |
 
 ### Зафиксированные технические решения
@@ -132,6 +135,7 @@ widget-prototype/
 | 2026-04-10 | BiometricHelper: реальный BiometricPrompt (не заглушка) + /auth/biometric на сервере | Демо включает настоящую биометрию устройства; сервер выдаёт banking_token без PIN |
 | 2026-04-10 | VTB-шрифты (vtb_bold/book/demi_bold/light.ttf) подключены как font resources | Визуальная идентичность ВТБ в Compose-экранах |
 | 2026-04-10 | mock_api докеризирован: Dockerfile + docker-compose.yml, порт 127.0.0.1:8001 | Изоляция от ТГДОМ на одном VDS; nginx проксирует vita-api.vibefounder.ru → :8001 |
+| 2026-04-10 | STT: REST-polling заменён на gRPC Streaming (Яндекс SpeechKit v2) | REST отправлял накопленный буфер каждую ~1 сек → 4-6x переплата; gRPC — один стрим на сессию, биллинг = реальная длина аудио; partial-результаты слово-за-словом |
 
 ---
 
