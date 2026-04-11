@@ -5,12 +5,14 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.provider.ContactsContract
 import androidx.core.content.ContextCompat
+import timber.log.Timber
 
 data class ContactCandidate(
     val displayName: String,
     val phone: String,
     val bankDisplayName: String,
-    val score: Float
+    val score: Float,
+    val pickCount: Int = 0
 )
 
 /**
@@ -33,10 +35,12 @@ object ContactMatcher {
         ) return emptyList()
 
         val tokens = tokenize(rawQuery)
+        Timber.d("[ContactMatcher] query='$rawQuery' → tokens=$tokens")
         if (tokens.isEmpty()) return emptyList()
 
         // Грузим все контакты и скорим в Kotlin — избегаем проблем с LIKE и кириллицей
         val allContacts = queryAllContacts(context)
+        Timber.d("[ContactMatcher] total contacts in phonebook: ${allContacts.size}")
 
         val best = mutableMapOf<String, Pair<RawContact, Float>>()
         for (c in allContacts) {
@@ -47,27 +51,65 @@ object ContactMatcher {
             }
         }
 
+        Timber.d("[ContactMatcher] candidates above 0.4 threshold: ${best.size}")
+        best.values.forEach { (c, s) ->
+            Timber.d("[ContactMatcher]   '${c.name}' (${c.phone}) → base_score=$s")
+        }
+
         // Применяем буст из истории выборов
         val pickCounts = ContactMemory.getPickCounts(rawQuery, context)
+        Timber.d("[ContactMatcher] pickCounts for key='${ContactMemory.normalizeKey(rawQuery)}': $pickCounts")
 
         return best.values
             .map { (c, s) ->
-                val boost = ContactMemory.scoreBoost(pickCounts[c.phone] ?: 0)
+                val picks = pickCounts[c.phone] ?: 0
+                val boost = ContactMemory.scoreBoost(picks)
+                val finalScore = (s + boost).coerceAtMost(1f)
+                Timber.d("[ContactMatcher]   '${c.name}' picks=$picks boost=$boost final=$finalScore")
                 ContactCandidate(
                     displayName = c.name,
                     phone = c.phone,
                     bankDisplayName = makeBankName(c.name),
-                    score = (s + boost).coerceAtMost(1f)
+                    score = finalScore,
+                    pickCount = picks
                 )
             }
-            .sortedByDescending { it.score }
+            .sortedWith(compareByDescending<ContactCandidate> { it.score }.thenByDescending { it.pickCount })
     }
 
     /** True если первый кандидат явно лучше остальных → однозначное совпадение. */
     fun isHighConfidence(candidates: List<ContactCandidate>): Boolean {
         if (candidates.isEmpty()) return false
-        if (candidates.size == 1) return candidates[0].score >= 0.4f
-        return candidates[0].score >= 0.8f && (candidates[0].score - candidates[1].score) >= 0.3f
+        if (candidates.size == 1) {
+            val result = candidates[0].score >= 0.4f
+            Timber.d("[ContactMatcher] isHighConfidence: single candidate score=${candidates[0].score} → $result")
+            return result
+        }
+        // Memory-based: пользователь достаточно раз выбирал этот контакт → авторезолв
+        if (candidates[0].pickCount >= ContactMemory.AUTO_RESOLVE_AT) {
+            Timber.d("[ContactMatcher] isHighConfidence: pickCount=${candidates[0].pickCount} >= ${ContactMemory.AUTO_RESOLVE_AT} → true (memory)")
+            return true
+        }
+        val top = candidates[0].score
+        val second = candidates[1].score
+        val gap = top - second
+        val result = top >= 0.8f && gap >= 0.3f
+        Timber.d("[ContactMatcher] isHighConfidence: top=$top second=$second gap=$gap → $result")
+        return result
+    }
+
+    /**
+     * Срезает слабых кандидатов перед показом disambiguation.
+     * Правило: показывать только тех, чей score >= topScore - 0.4, не более MAX_CANDIDATES.
+     *
+     * Примеры:
+     *   ["Мама"=1.0, "Мама Арсика"=0.5, ...] → min=0.6 → только ["Мама"=1.0, "Мама"=1.0] (дубли)
+     *   ["Маша"=0.8, "Маша Иванова"=0.7]     → min=0.4 → оба остаются
+     */
+    fun filterCandidates(sorted: List<ContactCandidate>): List<ContactCandidate> {
+        if (sorted.isEmpty()) return sorted
+        val minScore = (sorted[0].score - MAX_SHOW_GAP).coerceAtLeast(0.4f)
+        return sorted.filter { it.score >= minScore }.take(MAX_CANDIDATES)
     }
 
     /** Маскированный телефон для отображения: +7 (918) ***-**-11 */
@@ -82,6 +124,9 @@ object ContactMatcher {
     }
 
     // ── Internals ─────────────────────────────────────────────────────────────
+
+    private const val MAX_CANDIDATES = 5
+    private const val MAX_SHOW_GAP = 0.4f  // максимальный разрыв с лидером для показа
 
     private data class RawContact(val name: String, val phone: String)
 
@@ -115,7 +160,7 @@ object ContactMatcher {
             val pi = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
             while (it.moveToNext()) {
                 val name = it.getString(ni) ?: continue
-                val phone = it.getString(pi)?.replace(Regex("[\\s\\-()]"), "") ?: continue
+                val phone = normalizePhone(it.getString(pi) ?: continue)
                 if (seen.add("$name|$phone")) result.add(RawContact(name, phone))
             }
         }
@@ -157,6 +202,20 @@ object ContactMatcher {
         }
 
         return matchedPairs.toFloat() / maxOf(tokens.size, parts.size).toFloat()
+    }
+
+    /**
+     * Нормализует номер телефона: убирает пробелы/тире, приводит 8/7/+7 к единому +7XXX-формату.
+     * Это устраняет дубли "Мама" когда один номер сохранён как +79... а другой как 89...
+     */
+    private fun normalizePhone(raw: String): String {
+        val digits = raw.filter { it.isDigit() }
+        return when {
+            digits.length == 11 && (digits.startsWith("7") || digits.startsWith("8")) ->
+                "+7${digits.drop(1)}"
+            digits.length == 10 -> "+7$digits"
+            else -> raw.replace(Regex("[\\s\\-()]"), "")
+        }
     }
 
     /** "Паша Коноплев СПБГУ" → "Паша К."  |  "мама" → "Клиент ВТБ" */

@@ -110,7 +110,13 @@
             android:exported="false"
             android:theme="@style/Theme.VTBVita.BottomSheet" />
 
-        <!-- Выбор из нескольких кандидатов (NLP нашёл 2+ совпадений) -->
+        <!-- Единый флоу перевода через NLP: disambiguation + подтверждение в одном модале -->
+        <activity
+            android:name=".TransferFlowActivity"
+            android:exported="false"
+            android:theme="@style/Theme.VTBVita.BottomSheet" />
+
+        <!-- Выбор из нескольких кандидатов (NLP нашёл 2+ совпадений) — legacy, заменён TransferFlowActivity -->
         <activity
             android:name=".ContactDisambiguationActivity"
             android:exported="false"

@@ -43,7 +43,7 @@ class VoiceRecordingService : Service() {
 
         // VAD — клиентский детектор тишины
         private const val VAD_SILENCE_THRESHOLD = 0.20f   // ниже → тишина (фон ~0.08–0.15)
-        private const val VAD_SILENCE_MS        = 1500L   // тишина дольше 1.5 сек → submit
+        private const val VAD_SILENCE_MS        = 1200L   // тишина дольше 1.2 сек → submit
         private const val VAD_MIN_SPEECH_MS     = 600L    // нужно хотя бы 0.6 сек речи до VAD
         private const val VAD_POLL_MS           = 60L     // интервал опроса
     }

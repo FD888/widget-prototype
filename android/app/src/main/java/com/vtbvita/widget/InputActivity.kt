@@ -111,13 +111,10 @@ class InputActivity : FragmentActivity() {
                     },
                     onTransfer = { name, phone, bankDisplayName, amount ->
                         val i = if (name != null || phone != null) {
-                            TransferDetailsActivity.newIntent(
-                                this,
-                                recipientName = name ?: "",
-                                recipientPhone = phone ?: "",
-                                amount = amount ?: 0.0,
-                                bankDisplayName = bankDisplayName ?: ""
-                            )
+                            // Авторезолв — стартуем сразу на экране подтверждения.
+                            // Кандидаты уже сохранены в TransferFlowActivity.pendingCandidates
+                            // (устанавливаются в handleTransferIntent перед вызовом onTransfer).
+                            TransferFlowActivity.newIntentAutoResolved(this, amount)
                         } else {
                             ContactPickerActivity.newIntent(this, amount)
                         }
@@ -126,9 +123,10 @@ class InputActivity : FragmentActivity() {
                         finish()
                     },
                     onAmbiguousTransfer = { candidates, recipientRaw, amount ->
-                        ContactDisambiguationActivity.pendingCandidates = candidates
-                        ContactDisambiguationActivity.pendingRecipientRaw = recipientRaw
-                        val i = ContactDisambiguationActivity.newIntent(this, amount)
+                        TransferFlowActivity.pendingCandidates = candidates
+                        TransferFlowActivity.pendingRecipientRaw = recipientRaw
+                        TransferFlowActivity.pendingAutoContact = null
+                        val i = TransferFlowActivity.newIntentAmbiguous(this, amount)
                         BankingSession.putInIntent(i)
                         startActivity(i)
                         finish()
@@ -617,21 +615,39 @@ private fun submitText(
 
             "transfer" -> {
                 val recipientRaw = parsed.recipient
+                android.util.Log.d("VitaTransfer", "NLP recipient_raw='$recipientRaw' amount=${parsed.amount}")
                 if (recipientRaw != null) {
-                    val candidates = ContactMatcher.search(recipientRaw, context)
+                    // allCandidates — все выше 0.4, без фильтрации (для back-навигации)
+                    val allCandidates = ContactMatcher.search(recipientRaw, context)
+                    // filtered — топ-кандидаты для отображения (gap ≤ 0.4 от лидера, ≤ 5)
+                    val filtered = ContactMatcher.filterCandidates(allCandidates)
+                    android.util.Log.d("VitaTransfer", "all(${allCandidates.size}) filtered(${filtered.size}): ${filtered.map { "'${it.displayName}' score=${it.score}" }}")
                     when {
-                        candidates.isEmpty() ->
-                            // Контакт не найден — открываем полный список с предзаполненной суммой
+                        filtered.isEmpty() -> {
+                            android.util.Log.d("VitaTransfer", "→ no contacts found, opening picker")
                             onTransfer(null, null, null, parsed.amount)
-                        ContactMatcher.isHighConfidence(candidates) -> {
-                            val c = candidates[0]
+                        }
+                        ContactMatcher.isHighConfidence(filtered) -> {
+                            val c = filtered[0]
+                            android.util.Log.d("VitaTransfer", "→ HIGH CONFIDENCE, auto-resolving to '${c.displayName}'")
+                            // Для back-навигации: альтернативы (без авто-выбранного контакта).
+                            // Сначала из filtered, если там пусто — из полного списка.
+                            val alternatives = (filtered + allCandidates)
+                                .distinctBy { it.phone }
+                                .filter { it.phone != c.phone }
+                                .take(5)
+                            TransferFlowActivity.pendingCandidates = alternatives
+                            TransferFlowActivity.pendingRecipientRaw = recipientRaw
+                            TransferFlowActivity.pendingAutoContact = c
                             onTransfer(c.displayName, c.phone, c.bankDisplayName, parsed.amount)
                         }
-                        else ->
-                            // Несколько кандидатов — показываем выбор
-                            onAmbiguousTransfer(candidates, recipientRaw, parsed.amount)
+                        else -> {
+                            android.util.Log.d("VitaTransfer", "→ AMBIGUOUS, showing disambiguation with ${filtered.size} candidates")
+                            onAmbiguousTransfer(filtered, recipientRaw, parsed.amount)
+                        }
                     }
                 } else {
+                    android.util.Log.d("VitaTransfer", "→ recipient is null, opening transfer without contact")
                     onTransfer(null, null, null, parsed.amount)
                 }
             }

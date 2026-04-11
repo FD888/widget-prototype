@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-11 (multi-user personas)*
+*Последнее обновление: 2026-04-12 (unified transfer flow)*
 
 ### Структура репозитория
 
@@ -31,7 +31,8 @@ widget-prototype/
 │       │   ├── MockBankActivity.kt         ← mock банковское приложение
 │       │   ├── BankingSession.kt           ← in-memory banking JWT (15 мин)
 │       │   ├── PhoneVerificationActivity.kt← верификация номера телефона
-│       │   ├── ContactDisambiguationActivity.kt ← bottom sheet выбора когда 2+ кандидатов
+│       │   ├── TransferFlowActivity.kt         ← единый модал NLP-флоу: disambiguation + подтверждение (Compose-навигация)
+│       │   ├── ContactDisambiguationActivity.kt ← legacy (заменён TransferFlowActivity для NLP-пути)
 │       │   ├── api/MockApiService.kt       ← HTTP-клиент к FastAPI
 │       │   ├── VoiceStreamingRecorder.kt   ← WebSocket PCM-стриминг на сервер (16kHz/16-bit)
 │       │   ├── VoiceRecordingService.kt    ← Foreground Service: запись голоса + анимация колец в виджете
@@ -41,7 +42,8 @@ widget-prototype/
 │       │   ├── BiometricHelper.kt          ← реальный BiometricPrompt (STRONG + WEAK)
 │       │   ├── model/Models.kt             ← data-классы
 │       │   ├── ui/theme/                   ← VTB-цвета, типографика
-│       │   └── ui/components/VitaComponents.kt ← shared UI компоненты
+│       │   ├── ui/components/VitaComponents.kt ← shared UI компоненты
+│       │   └── ui/components/TransferDetailsContent.kt ← shared Composable для формы перевода
 │       ├── res/
 │       │   ├── layout/widget_vita.xml      ← RemoteViews-макет виджета
 │       │   ├── drawable/widget_bg.xml      ← синий градиент, cornerRadius 32dp
@@ -91,8 +93,8 @@ widget-prototype/
 | Системные интенты (alarm/timer/call/app) | `SystemIntentHandler.kt` | ✅ |
 | Выбор контакта (ContactsContract) | `ContactPickerActivity.kt` | ✅ |
 | Нечёткий поиск контакта (склонения, scoring) | `nlp/ContactMatcher.kt` | ✅ |
-| Disambiguation bottom sheet (2+ кандидатов) | `ContactDisambiguationActivity.kt` | ✅ |
-| Обучение на выборах пользователя (boost score) | `nlp/ContactMemory.kt` | ✅ |
+| Единый NLP-флоу перевода (disambiguation + подтверждение) | `TransferFlowActivity.kt` | ✅ |
+| Обучение на выборах пользователя (boost score + авторезолв) | `nlp/ContactMemory.kt` | ✅ |
 | WebSocket PCM-стриминг (голос → сервер → SpeechKit) | `VoiceStreamingRecorder.kt` | ✅ |
 | Голосовой ввод нативно в виджете (Foreground Service) | `VoiceRecordingService.kt` | ✅ |
 | Пульсирующие кольца в виджете (~12fps, partiallyUpdateAppWidget) | `VoiceRecordingService.kt` | ✅ |
@@ -139,6 +141,8 @@ widget-prototype/
 | 2026-04-10 | VTB-шрифты (vtb_bold/book/demi_bold/light.ttf) подключены как font resources | Визуальная идентичность ВТБ в Compose-экранах |
 | 2026-04-10 | mock_api докеризирован: Dockerfile + docker-compose.yml, порт 127.0.0.1:8001 | Изоляция от ТГДОМ на одном VDS; nginx проксирует vita-api.vibefounder.ru → :8001 |
 | 2026-04-10 | STT: REST-polling заменён на gRPC Streaming (Яндекс SpeechKit v2) | REST отправлял накопленный буфер каждую ~1 сек → 4-6x переплата; gRPC — один стрим на сессию, биллинг = реальная длина аудио; partial-результаты слово-за-словом |
+| 2026-04-12 | TransferFlowActivity: единый модал NLP-флоу вместо ContactDisambiguationActivity + TransferDetailsActivity | Compose-state навигация внутри одной Activity; back из Confirmation → ContactSelection с inline-поиском; ContactPickerActivity-путь сохранён через TransferDetailsActivity |
+| 2026-04-12 | ContactMatcher: filterCandidates (gap≤0.4 от лидера, cap=5) + нормализация телефонов (8/+7) + memory авторезолв при pickCount≥3 | Устранены дубли контактов с разным форматом номера; список в disambiguation сужен до релевантных; ★-контакт обходит disambiguation |
 | 2026-04-11 | Multi-user архитектура: PIN → user_id → banking JWT содержит user_id | 3 персоны из исследования N=97: vitya(1111)/olga(2222)/artyom(3333); каждый endpoint роутится к USERS[user_id]; баланс уменьшается динамически при подтверждении |
 | 2026-04-11 | data.py — единый источник данных (single source of truth) | main.py импортирует USERS + PHONE_INDEX из data.py; inline MOCK_ACCOUNTS/MOCK_CONTACTS удалены; PHONE_INDEX глобальный по всем пользователям |
 | 2026-04-11 | /auth/biometric принимает user_id в теле запроса | Android знает выбранную персону → передаёт persona.id → сервер кодирует в JWT |
