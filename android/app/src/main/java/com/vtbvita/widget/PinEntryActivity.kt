@@ -2,7 +2,6 @@ package com.vtbvita.widget
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,7 +33,7 @@ import com.vtbvita.widget.ui.theme.VtbBlueMid
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-class PinEntryActivity : ComponentActivity() {
+class PinEntryActivity : FragmentActivity() {
 
     companion object {
         const val EXTRA_PERSONA_ID = "persona_id"
