@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-10 (code quality pass)*
+*Последнее обновление: 2026-04-11 (multi-user personas)*
 
 ### Структура репозитория
 
@@ -139,6 +139,9 @@ widget-prototype/
 | 2026-04-10 | VTB-шрифты (vtb_bold/book/demi_bold/light.ttf) подключены как font resources | Визуальная идентичность ВТБ в Compose-экранах |
 | 2026-04-10 | mock_api докеризирован: Dockerfile + docker-compose.yml, порт 127.0.0.1:8001 | Изоляция от ТГДОМ на одном VDS; nginx проксирует vita-api.vibefounder.ru → :8001 |
 | 2026-04-10 | STT: REST-polling заменён на gRPC Streaming (Яндекс SpeechKit v2) | REST отправлял накопленный буфер каждую ~1 сек → 4-6x переплата; gRPC — один стрим на сессию, биллинг = реальная длина аудио; partial-результаты слово-за-словом |
+| 2026-04-11 | Multi-user архитектура: PIN → user_id → banking JWT содержит user_id | 3 персоны из исследования N=97: vitya(1111)/olga(2222)/artyom(3333); каждый endpoint роутится к USERS[user_id]; баланс уменьшается динамически при подтверждении |
+| 2026-04-11 | data.py — единый источник данных (single source of truth) | main.py импортирует USERS + PHONE_INDEX из data.py; inline MOCK_ACCOUNTS/MOCK_CONTACTS удалены; PHONE_INDEX глобальный по всем пользователям |
+| 2026-04-11 | /auth/biometric принимает user_id в теле запроса | Android знает выбранную персону → передаёт persona.id → сервер кодирует в JWT |
 
 ---
 

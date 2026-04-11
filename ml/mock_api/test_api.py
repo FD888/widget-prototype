@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 os.environ["APP_API_KEY"]    = "test_key"
 os.environ["JWT_SECRET"]     = "test_secret_32chars_long_enough!"
 os.environ["ALLOWED_PHONES"] = "+79000000000"
-os.environ["ALLOWED_PIN"]    = "1234"
+os.environ["ALLOWED_PINS"]   = "1111:vitya,2222:olga,3333:artyom"
 os.environ["DEEPSEEK_API_KEY"] = ""  # отключаем реальный LLM
 
 from main import app
@@ -99,9 +99,17 @@ def _get_app_token() -> str:
 
 def test_auth_correct_pin():
     token = _get_app_token()
-    r = client.post("/auth", json={"pin": "1234"}, headers={"X-Api-Key": token})
+    r = client.post("/auth", json={"pin": "1111"}, headers={"X-Api-Key": token})
     assert r.status_code == 200
     assert "banking_token" in r.json()
+
+def test_auth_all_personas():
+    """Каждый PIN возвращает banking_token для своей персоны."""
+    token = _get_app_token()
+    for pin in ("1111", "2222", "3333"):
+        r = client.post("/auth", json={"pin": pin}, headers={"X-Api-Key": token})
+        assert r.status_code == 200, f"PIN {pin} failed"
+        assert "banking_token" in r.json()
 
 def test_auth_wrong_pin():
     token = _get_app_token()
@@ -109,15 +117,15 @@ def test_auth_wrong_pin():
     assert r.status_code == 403
 
 def test_auth_without_api_key():
-    r = client.post("/auth", json={"pin": "9999"})
+    r = client.post("/auth", json={"pin": "1111"})
     assert r.status_code == 422  # missing X-Api-Key header
 
 
 # ─── /balance ─────────────────────────────────────────────────────────────────
 
-def _get_banking_token() -> str:
+def _get_banking_token(pin: str = "1111") -> str:
     token = _get_app_token()
-    r = client.post("/auth", json={"pin": "1234"}, headers={"X-Api-Key": token})
+    r = client.post("/auth", json={"pin": pin}, headers={"X-Api-Key": token})
     return r.json()["banking_token"]
 
 def test_balance_returns_accounts():

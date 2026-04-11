@@ -39,36 +39,38 @@ data class Persona(
 
 val PERSONAS = listOf(
     Persona(
-        id = "denis",
-        name = "Денис",
-        role = "Зарплатный клиент · 22 года",
-        description = "Молодой активный пользователь. Получает зарплату на карту ВТБ, " +
-                "регулярно переводит друзьям, пополняет телефон. " +
-                "Интересуется инвестициями. Виджет предлагает контекстные " +
-                "финансовые подсказки под его привычки.",
-        pin = "1234",
-        widgetPrompt = "Как настроение, Денис?",
+        id = "vitya",
+        name = "Витя",
+        role = "Студент · 22 года",
+        description = "Сегмент Must-Have из исследования N=97. Пользуется метро, " +
+                "часто пишет «скинь за пиццу». Предпочитает текстовый ввод — " +
+                "боится, что голос распознает неправильно. Баланс проверяет " +
+                "несколько раз в день.",
+        pin = "1111",
+        widgetPrompt = "Скинь Коле за пиццу?",
         available = true
     ),
     Persona(
-        id = "masha",
-        name = "Маша",
-        role = "Инвестор · 28 лет",
-        description = "Активный инвестор, следит за портфелем. " +
-                "Виджет будет показывать сигналы рынка и напоминания по вкладам.",
-        pin = "—",
-        widgetPrompt = "Рынок открылся, Маша",
-        available = false
+        id = "olga",
+        name = "Ольга",
+        role = "Финансовый менеджер · 38 лет",
+        description = "Сегмент Nice-to-Have. Главная боль — забытые платежи: " +
+                "ТТК Интернет снова просрочен. Ценит Face ID и умные " +
+                "напоминания. Опасается, что кто-то увидит баланс на экране.",
+        pin = "2222",
+        widgetPrompt = "ТТК просрочен, Ольга — оплатить?",
+        available = true
     ),
     Persona(
-        id = "yana",
-        name = "Яна",
-        role = "Студент · 21 год",
-        description = "Пользователь с небольшим оборотом, часто пополняет телефон " +
-                "и переводит за учёбу. Виджет адаптируется под студенческий бюджет.",
-        pin = "—",
-        widgetPrompt = "Стипендия пришла, Яна?",
-        available = false
+        id = "artyom",
+        name = "Артём",
+        role = "Маркетолог · 29 лет",
+        description = "Использует виджет как пассивный дашборд. Каждый вторник " +
+                "платит репетитору Тамаре 2 000 ₽ — виджет об этом помнит. " +
+                "Главный страх: «ещё один инструмент, который не приживётся».",
+        pin = "3333",
+        widgetPrompt = "Вторник — перевести Тамаре 2 000?",
+        available = true
     )
 )
 
@@ -89,7 +91,7 @@ class MainActivity : ComponentActivity() {
 
         // Если persona сохранена — сразу PIN (banking JWT всегда запрашивается заново)
         if (SessionManager.isLoggedIn(this)) {
-            val personaId = SessionManager.getPersonaId(this) ?: "denis"
+            val personaId = SessionManager.getPersonaId(this) ?: "vitya"
             startActivity(
                 Intent(this, PinEntryActivity::class.java).apply {
                     putExtra(PinEntryActivity.EXTRA_PERSONA_ID, personaId)

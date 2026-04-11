@@ -55,11 +55,12 @@ object MockApiService {
     }
 
     /** POST /auth/biometric — аутентификация через биометрию (без PIN). */
-    suspend fun authBiometric(context: Context): Result<BankingTokenResult> = withContext(Dispatchers.IO) {
+    suspend fun authBiometric(context: Context, userId: String = "vitya"): Result<BankingTokenResult> = withContext(Dispatchers.IO) {
         runCatching {
             val appToken = SessionManager.getAppToken(context)
                 ?: throw Exception("Не авторизован")
-            val json = post("/auth/biometric", JSONObject(), apiKey = appToken)
+            val body = JSONObject().apply { put("user_id", userId) }
+            val json = post("/auth/biometric", body, apiKey = appToken)
             BankingTokenResult(
                 token = json.getString("banking_token"),
                 expiresInSeconds = json.getInt("expires_in_seconds")

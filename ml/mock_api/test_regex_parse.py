@@ -8,7 +8,7 @@ import pytest
 os.environ.setdefault("APP_API_KEY", "test")
 os.environ.setdefault("JWT_SECRET", "test")
 os.environ.setdefault("ALLOWED_PHONES", "+79000000000")
-os.environ.setdefault("ALLOWED_PIN", "1234")
+os.environ.setdefault("ALLOWED_PINS", "1111:vitya,2222:olga,3333:artyom")
 
 from main import _regex_parse, _parse_amount, _normalize_text
 

@@ -54,7 +54,13 @@ def _normalize_phone_cfg(phone: str) -> str:
     return re.sub(r"\D", "", phone)
 
 ALLOWED_PHONES = {_normalize_phone_cfg(p) for p in os.getenv("ALLOWED_PHONES", "").split(",") if p.strip()}
-ALLOWED_PIN    = os.getenv("ALLOWED_PIN", "1234")  # fallback для локальной разработки
+
+# PIN → user_id  (env: "1111:vitya,2222:olga,3333:artyom")
+ALLOWED_PINS: dict[str, str] = {}
+for _entry in os.getenv("ALLOWED_PINS", "1111:vitya,2222:olga,3333:artyom").split(","):
+    if ":" in _entry:
+        _pin, _uid = _entry.strip().split(":", 1)
+        ALLOWED_PINS[_pin.strip()] = _uid.strip()
 
 app = FastAPI(title="VTB Vita Mock API", version="1.0.0")
 
@@ -97,63 +103,25 @@ def _check_app_token(x_api_key: str = Header(..., alias="X-Api-Key")):
         raise HTTPException(status_code=403, detail="Invalid or expired token")
 
 
-def _check_banking_token(x_banking_token: str = Header(..., alias="X-Banking-Token")):
-    """Проверяет X-Banking-Token — выдаётся после валидации PIN через /auth."""
+def _get_user_from_banking_token(x_banking_token: str = Header(..., alias="X-Banking-Token")) -> str:
+    """Проверяет X-Banking-Token и возвращает user_id из payload."""
+    from data import USERS as _USERS
     try:
         payload = jwt.decode(x_banking_token, JWT_SECRET, algorithms=["HS256"])
         if payload.get("type") != "banking_access":
             raise HTTPException(status_code=403, detail="Invalid token type")
+        user_id = payload.get("user_id")
+        if not user_id or user_id not in _USERS:
+            raise HTTPException(status_code=403, detail="Invalid or expired banking token")
+        return user_id
     except JWTError:
         raise HTTPException(status_code=403, detail="Invalid or expired banking token")
 
 # ---------------------------------------------------------------------------
-# Mock data
+# Data — импорт персон и телефонного индекса из data.py
 # ---------------------------------------------------------------------------
 
-# Счета пользователя
-MOCK_ACCOUNTS: list[dict] = [
-    {
-        "id": "debit",
-        "name": "Дебетовая карта",
-        "masked": "****5678",
-        "balance": 47_230.50,
-        "type": "debit",
-        "currency": "RUB",
-    },
-    {
-        "id": "credit",
-        "name": "Кредитная карта",
-        "masked": "****9012",
-        "balance": 12_500.00,
-        "limit": 50_000.00,
-        "type": "credit",
-        "currency": "RUB",
-    },
-    {
-        "id": "savings",
-        "name": "Накопительный счёт",
-        "masked": "****3401",
-        "balance": 120_000.00,
-        "type": "savings",
-        "currency": "RUB",
-    },
-]
-
-# Контакты: ключ поиска (как пользователь говорит) → данные
-# display_name — формат "Имя Ф." как в реальных банках
-# phone — полный номер, хранится только на сервере, никогда не отдаётся клиенту
-# banks — банки получателя (только они доступны для выбора в модале)
-MOCK_CONTACTS = {
-    "маша":   {"display_name": "Мария К.",   "phone": "+79261112233", "banks": ["ВТБ", "Сбер"]},
-    "мария":  {"display_name": "Мария К.",   "phone": "+79261112233", "banks": ["ВТБ", "Сбер"]},
-    "яна":    {"display_name": "Яна С.",     "phone": "+79031234567", "banks": ["ВТБ", "Т-Банк"]},
-    "денис":  {"display_name": "Денис В.",   "phone": "+79162345678", "banks": ["ВТБ"]},
-    "дидар":  {"display_name": "Дидар М.",   "phone": "+79273456789", "banks": ["Сбер", "Т-Банк", "Альфа"]},
-    "элина":  {"display_name": "Элина Р.",   "phone": "+79114567890", "banks": ["ВТБ", "Альфа"]},
-    "мама":   {"display_name": "Светлана В.","phone": "+79055678901", "banks": ["Сбер"]},
-    "папа":   {"display_name": "Виктор В.",  "phone": "+79256789012", "banks": ["ВТБ", "Сбер"]},
-    "саша":   {"display_name": "Александр П.","phone": "+79967890123", "banks": ["Т-Банк"]},
-}
+from data import USERS, PHONE_INDEX, build_phone_index
 
 MOCK_OPERATORS = {
     "+7900": "МТС",  "+7901": "МТС",  "+7902": "МТС",  "+7903": "МТС",
@@ -172,13 +140,8 @@ MOCK_OPERATORS = {
 }
 
 # Pending operations (in-memory — ok for prototype demo)
+# Структура: txn_id → {intent, amount, display_name, user_id, ...}
 _pending: dict[str, dict] = {}
-
-# ---------------------------------------------------------------------------
-# Phone index (нормализованный номер → ключ в MOCK_CONTACTS)
-# ---------------------------------------------------------------------------
-
-_PHONE_INDEX: dict[str, str] = {}
 
 def _format_phone(phone: str) -> str:
     """Форматирует номер для отображения: +7 (926) 111-22-33"""
@@ -190,14 +153,6 @@ def _format_phone(phone: str) -> str:
         return f"+7 ({digits[0:3]}) {digits[3:6]}-{digits[6:8]}-{digits[8:10]}"
     return phone
 
-def _build_phone_index() -> None:
-    for key, contact in MOCK_CONTACTS.items():
-        normalized = _normalize_phone(contact["phone"])
-        if normalized:
-            _PHONE_INDEX[normalized] = key
-
-_build_phone_index()
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -208,11 +163,11 @@ def _now() -> str:
 def _new_txn() -> str:
     return f"TXN-{uuid.uuid4().hex[:8].upper()}"
 
-def _account_by_id(account_id: str) -> dict:
-    for acc in MOCK_ACCOUNTS:
-        if acc["id"] == account_id:
+def _account_by_id(accounts: list[dict], account_id: str) -> dict:
+    for acc in accounts:
+        if acc["account_id"] == account_id:
             return acc
-    return MOCK_ACCOUNTS[0]
+    return accounts[0]
 
 def _detect_operator(phone: str) -> str:
     digits = "".join(c for c in phone if c.isdigit())
@@ -221,17 +176,29 @@ def _detect_operator(phone: str) -> str:
         return MOCK_OPERATORS.get(prefix, "Оператор")
     return "Оператор"
 
-def _accounts_for_response() -> list[dict]:
-    return [
-        {
-            "id": acc["id"],
+def _accounts_for_response(accounts: list[dict]) -> list[dict]:
+    result = []
+    for acc in accounts:
+        pan = acc.get("pan_masked") or ""
+        digits_only = pan.replace(" ", "").replace("*", "")
+        masked = "****" + digits_only[-4:] if len(digits_only) >= 4 else "****"
+
+        acc_type = acc.get("account_type", "CurrentAccount")
+        if "Credit" in acc_type:
+            type_str = "credit"
+        elif "Savings" in acc_type:
+            type_str = "savings"
+        else:
+            type_str = "debit"
+
+        result.append({
+            "id": acc["account_id"],
             "name": acc["name"],
-            "masked": acc["masked"],
+            "masked": masked,
             "balance": acc["balance"],
-            "type": acc["type"],
-        }
-        for acc in MOCK_ACCOUNTS
-    ]
+            "type": type_str,
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -814,32 +781,40 @@ class AuthResponse(BaseModel):
 def auth(req: AuthRequest, _: None = Depends(_check_app_token)):
     """
     Валидирует PIN → возвращает banking JWT (15 мин, только в памяти на клиенте).
+    PIN однозначно идентифицирует персону: 1111→vitya, 2222→olga, 3333→artyom.
     Требует X-Api-Key (app_token) — чтобы только верифицированные устройства могли войти.
     """
-    if not ALLOWED_PIN or req.pin != ALLOWED_PIN:
+    user_id = ALLOWED_PINS.get(req.pin)
+    if not user_id:
         _log.warning("auth: PIN mismatch")
         raise HTTPException(status_code=403, detail="Неверный PIN")
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MIN)
     token = jwt.encode(
-        {"type": "banking_access", "exp": expire},
+        {"type": "banking_access", "user_id": user_id, "exp": expire},
         JWT_SECRET, algorithm="HS256"
     )
-    _log.info("auth: banking token issued, expires_in=%ds", JWT_EXPIRE_MIN * 60)
+    _log.info("auth: user=%s banking token issued, expires_in=%ds", user_id, JWT_EXPIRE_MIN * 60)
     return AuthResponse(banking_token=token, expires_in_seconds=JWT_EXPIRE_MIN * 60)
 
 
+class BiometricAuthRequest(BaseModel):
+    user_id: str = "vitya"  # Android передаёт id выбранной персоны
+
 @app.post("/auth/biometric", response_model=AuthResponse)
-def auth_biometric(_: None = Depends(_check_app_token)):
+def auth_biometric(req: BiometricAuthRequest, _: None = Depends(_check_app_token)):
     """
     Аутентификация через биометрию — биометрический промпт прошёл на устройстве,
-    PIN не нужен. Требует X-Api-Key (app_token) чтобы только верифицированные
-    устройства могли получить токен.
+    PIN не нужен. Тело запроса содержит user_id выбранной персоны.
+    Требует X-Api-Key (app_token) чтобы только верифицированные устройства могли получить токен.
     """
+    if req.user_id not in USERS:
+        raise HTTPException(status_code=403, detail="Unknown user")
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MIN)
     token = jwt.encode(
-        {"type": "banking_access", "exp": expire},
+        {"type": "banking_access", "user_id": req.user_id, "exp": expire},
         JWT_SECRET, algorithm="HS256"
     )
+    _log.info("auth/biometric: user=%s token issued", req.user_id)
     return AuthResponse(banking_token=token, expires_in_seconds=JWT_EXPIRE_MIN * 60)
 
 
@@ -873,14 +848,15 @@ def verify_phone(req: PhoneVerifyRequest):
 
 
 @app.get("/balance", response_model=BalanceResponse)
-def balance(_: None = Depends(_check_banking_token)):
+def balance(user_id: str = Depends(_get_user_from_banking_token)):
     """
     Возвращает балансы всех счетов пользователя.
     Биометрия/PIN выполняется на стороне Android ДО вызова этого endpoint.
     Никакого confirm не нужно — это чтение, не действие.
     """
+    accounts = USERS[user_id]["accounts"]
     return BalanceResponse(
-        accounts=_accounts_for_response(),
+        accounts=_accounts_for_response(accounts),
         timestamp=_now(),
     )
 
@@ -889,23 +865,24 @@ def balance(_: None = Depends(_check_banking_token)):
 def lookup(req: LookupRequest, _: None = Depends(_check_app_token)):
     """
     Android вызывает при ручном вводе номера в модале перевода.
-    Возвращает display_name ("Мария К.") если номер найден в контактах.
+    Ищет номер в PHONE_INDEX по всем пользователям.
     Полный номер на сервере, клиенту не отдаётся.
     """
     normalized = _normalize_phone(req.phone)
-    key = _PHONE_INDEX.get(normalized)
-    if key:
-        contact = MOCK_CONTACTS[key]
+    entry = PHONE_INDEX.get(normalized)
+    if entry:
+        uid, key = entry
+        contact = USERS[uid]["contacts"][key]
         return LookupResponse(
             found=True,
             display_name=contact["display_name"],
-            recipient_banks=contact["banks"],
+            recipient_banks=contact.get("available_banks", []),
         )
     return LookupResponse(found=False)
 
 
 @app.post("/command", response_model=ConfirmationResponse)
-def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
+def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_token)):
     """
     Принимает распарсенный intent transfer или topup.
     Биометрия/PIN выполняется на Android ДО вызова.
@@ -913,11 +890,13 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
     """
     txn_id = _new_txn()
     ts = _now()
-    accounts = _accounts_for_response()
-    default_acc = MOCK_ACCOUNTS[0]
+    user_accounts = USERS[user_id]["accounts"]
+    user_contacts = USERS[user_id]["contacts"]
+    accounts = _accounts_for_response(user_accounts)
+    default_acc_id = user_accounts[0]["account_id"]
 
-    _log.info("command: txn=%s intent=%s amount=%s recipient=%r phone=%r",
-              txn_id, req.intent, req.amount, req.recipient, req.phone)
+    _log.info("command: user=%s txn=%s intent=%s amount=%s recipient=%r phone=%r",
+              user_id, txn_id, req.intent, req.amount, req.recipient, req.phone)
 
     # --- transfer ---
     if req.intent == "transfer":
@@ -932,24 +911,25 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
 
         if req.recipient:
             key = req.recipient.lower().strip()
-            contact = MOCK_CONTACTS.get(key)
+            contact = user_contacts.get(key)
             if contact:
                 contact_found = True
                 display_name = contact["display_name"]
                 recipient_phone = _format_phone(contact["phone"])
-                recipient_banks = contact["banks"]
+                recipient_banks = contact.get("available_banks", [])
             else:
                 digits = "".join(c for c in req.recipient if c.isdigit())
                 if len(digits) >= 10:
-                    # Передан номер напрямую — ищем в индексе
+                    # Передан номер напрямую — ищем в глобальном индексе
                     normalized = _normalize_phone(req.recipient)
-                    index_key = _PHONE_INDEX.get(normalized)
-                    if index_key:
+                    entry = PHONE_INDEX.get(normalized)
+                    if entry:
                         contact_found = True
-                        c = MOCK_CONTACTS[index_key]
+                        uid, ckey = entry
+                        c = USERS[uid]["contacts"][ckey]
                         display_name = c["display_name"]
                         recipient_phone = _format_phone(c["phone"])
-                        recipient_banks = c["banks"]
+                        recipient_banks = c.get("available_banks", [])
                     else:
                         # Незнакомый номер — отображаем как есть, банки неизвестны
                         recipient_phone = _format_phone(req.recipient)
@@ -963,6 +943,7 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
             "amount": req.amount,
             "display_name": display_name,
             "requires_manual_input": requires_manual,
+            "user_id": user_id,
         }
 
         return ConfirmationResponse(
@@ -972,7 +953,7 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
             subtitle="Укажите получателя" if requires_manual else display_name,
             amount=req.amount,
             source_accounts=accounts,
-            default_account_id=default_acc["id"],
+            default_account_id=default_acc_id,
             contact_found=contact_found,
             requires_manual_input=requires_manual,
             recipient_display_name=display_name,
@@ -998,6 +979,7 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
             "amount": req.amount,
             "phone": phone,
             "requires_manual_input": requires_manual,
+            "user_id": user_id,
         }
 
         return ConfirmationResponse(
@@ -1007,7 +989,7 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
             subtitle="Укажите номер телефона" if requires_manual else formatted_phone,
             amount=req.amount,
             source_accounts=accounts,
-            default_account_id=default_acc["id"],
+            default_account_id=default_acc_id,
             requires_manual_input=requires_manual,
             topup_phone=formatted_phone,
             operator=operator,
@@ -1019,10 +1001,10 @@ def command(req: CommandRequest, _: None = Depends(_check_banking_token)):
 
 
 @app.post("/confirm/{transaction_id}", response_model=OperationResult)
-def confirm(transaction_id: str, req: ConfirmRequest, _: None = Depends(_check_banking_token)):
+def confirm(transaction_id: str, req: ConfirmRequest, user_id: str = Depends(_get_user_from_banking_token)):
     """
     Пользователь нажал «Подтвердить» в модале.
-    Выполняет операцию, списывает с выбранного счёта.
+    Выполняет операцию, динамически списывает с выбранного счёта.
     """
     pending = _pending.pop(transaction_id, None)
     if pending is None:
@@ -1031,17 +1013,21 @@ def confirm(transaction_id: str, req: ConfirmRequest, _: None = Depends(_check_b
 
     ts = _now()
     intent = pending["intent"]
-    source_account = _account_by_id(req.source_account_id)
+    # Используем user_id из pending (операция создана этим же пользователем)
+    op_user_id = pending.get("user_id", user_id)
+    user_accounts = USERS[op_user_id]["accounts"]
+    source_account = _account_by_id(user_accounts, req.source_account_id)
     amount = pending.get("amount", 0)
 
     if amount > source_account["balance"]:
         raise HTTPException(status_code=422, detail="Недостаточно средств на выбранном счёте")
 
     balance_after = round(source_account["balance"] - amount, 2)
+    # Динамически обновляем баланс — сохраняется до перезапуска сервера
     source_account["balance"] = balance_after
 
-    _log.info("confirm: txn=%s intent=%s amount=%.2f account=%s balance_after=%.2f",
-              transaction_id, intent, amount, req.source_account_id, balance_after)
+    _log.info("confirm: user=%s txn=%s intent=%s amount=%.2f account=%s balance_after=%.2f",
+              op_user_id, transaction_id, intent, amount, req.source_account_id, balance_after)
 
     bank_label = f" через {req.selected_bank}" if req.selected_bank else ""
 

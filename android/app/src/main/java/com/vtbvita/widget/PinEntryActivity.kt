@@ -42,7 +42,7 @@ class PinEntryActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val personaId = intent.getStringExtra(EXTRA_PERSONA_ID) ?: "denis"
+        val personaId = intent.getStringExtra(EXTRA_PERSONA_ID) ?: "vitya"
         val persona = PERSONAS.find { it.id == personaId } ?: PERSONAS.first()
 
         setContent {
@@ -100,7 +100,7 @@ fun PinEntryScreen(
         if (isLoading) return
         isLoading = true
         scope.launch {
-            MockApiService.authBiometric(context).fold(
+            MockApiService.authBiometric(context, persona.id).fold(
                 onSuccess = { tokenResult -> onSuccess(tokenResult) },
                 onFailure = {
                     errorMsg = "Ошибка биометрии"

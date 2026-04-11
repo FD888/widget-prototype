@@ -14,7 +14,7 @@
 | ID | Задача | Статус | Владелец | Ветка |
 |----|--------|:------:|----------|-------|
 | C-01 | Зафиксировать стек, создать репозиторий, настроить конвенции | [x] | Денис + Яна | — |
-| C-02 | NLP-ядро: парсинг intent'ов (transfer / balance / topup) | [~] | Яна | `feature/C-02-nlp-intent-parser` |
+| C-02 | NLP-ядро: парсинг intent'ов (transfer / balance / topup) | [x] | Яна | `feature/C-02-nlp-intent-parser` |
 | C-03 | Mock API: FastAPI-сервис → данные для модалов | [x] | Денис | `feature/C-03-mock-api` |
 | C-04 | Android Widget UI: виджет → ввод → модал → статус | [x] | Денис | `feature/C-04-widget-ui` |
 | C-05 | Деплой: прототип доступен по публичному URL | [x] | Денис | `feature/C-05-deploy` |
@@ -83,5 +83,6 @@ C-02 + C-03 → C-05
 | 2026-04-04 | ContactMemory: boost score на основе истории выборов (count≥3 → +0.5 → auto-resolve) | Позволяет виджету обучаться на предпочтениях пользователя без сервера |
 | 2026-04-04 | VoiceStreamingRecorder: WebSocket + PCM 16kHz → Яндекс SpeechKit через прокси-сервер | Потоковый STT вместо batch записи — partial/final результаты в реальном времени |
 | 2026-04-10 | BiometricHelper: реальный BiometricPrompt + /auth/biometric endpoint | Демо показывает нативную биометрию устройства |
+| 2026-04-11 | Multi-user: data.py — единственный источник данных; PIN→user_id в JWT; 3 персоны из N=97 (Витя/Ольга/Артём) | Архитектурно правильная мультиюзерность = сильный аргумент на защите |
 | 2026-04-10 | mock_api: Dockerfile + docker-compose на VDS, сервис доступен на vtb.vibefounder.ru | Изолирован от ТГДОМ, nginx-прокси |
 | 2026-04-10 | STT переведён на gRPC Streaming (Яндекс SpeechKit v2): _stt_stream_grpc + yandex_speech/ | REST давал 4-6x переплату; gRPC — один стрим = один биллинг; partial слово-за-словом |
