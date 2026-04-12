@@ -86,8 +86,7 @@ class VoiceStreamingRecorder(
         audioRecord = rec
 
         val wsUrl = BuildConfig.MOCK_API_BASE_URL
-            .replace("https://", "wss://")
-            .replace("http://", "ws://") + "/ws/stt"
+            .replace("https://", "wss://") + "/ws/stt"
         Log.d(TAG, "Connecting to $wsUrl")
 
         val request = Request.Builder().url(wsUrl).build()

@@ -9,8 +9,7 @@ import androidx.fragment.app.FragmentActivity
 object BiometricHelper {
 
     private val AUTHENTICATORS =
-        BiometricManager.Authenticators.BIOMETRIC_STRONG or
-        BiometricManager.Authenticators.BIOMETRIC_WEAK
+        BiometricManager.Authenticators.BIOMETRIC_STRONG
 
     /** Проверяет, доступна ли биометрия на устройстве (сенсор зарегистрирован). */
     fun canAuthenticate(context: Context): Boolean =

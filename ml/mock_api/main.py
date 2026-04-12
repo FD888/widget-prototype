@@ -9,11 +9,12 @@ Flow (balance):
   Widget → [Biometric/PIN on Android] → GET /balance → показать данные (без confirm)
 """
 
-from fastapi import FastAPI, HTTPException, Header, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Header, Depends, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Literal
 from datetime import datetime, timezone, timedelta
+from collections import defaultdict, deque
 from jose import jwt, JWTError
 from dotenv import load_dotenv
 import uuid
@@ -45,8 +46,13 @@ _log = logging.getLogger("vita.api")
 # Config from environment
 # ---------------------------------------------------------------------------
 
-APP_API_KEY     = os.getenv("APP_API_KEY", "vita_demo_2026")
-JWT_SECRET      = os.getenv("JWT_SECRET", "dev_secret_change_in_production")
+APP_API_KEY     = os.getenv("APP_API_KEY")
+JWT_SECRET      = os.getenv("JWT_SECRET")
+
+if not APP_API_KEY:
+    raise RuntimeError("APP_API_KEY environment variable is required")
+if not JWT_SECRET:
+    raise RuntimeError("JWT_SECRET environment variable is required")
 JWT_EXPIRE_MIN  = int(os.getenv("JWT_EXPIRE_MINUTES", "15"))
 
 def _normalize_phone_cfg(phone: str) -> str:
@@ -64,12 +70,45 @@ for _entry in os.getenv("ALLOWED_PINS", "1111:vitya,2222:olga,3333:artyom").spli
 
 app = FastAPI(title="VTB Vita Mock API", version="1.0.0")
 
+_ALLOWED_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+if not _ALLOWED_ORIGINS:
+    _ALLOWED_ORIGINS = ["https://vtb.vibefounder.ru"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "X-Api-Key", "X-Banking-Token"],
 )
+
+# ---------------------------------------------------------------------------
+# Rate limiting — простой sliding-window счётчик в памяти
+# Генерирует 429 при превышении, не требует внешних зависимостей
+# ---------------------------------------------------------------------------
+
+_rate_buckets: dict[str, deque] = defaultdict(deque)
+
+def _check_rate_limit(key: str, max_requests: int, window_seconds: int = 60) -> None:
+    """
+    Sliding-window rate limit.
+    key — уникальный идентификатор (например "verify-phone:1.2.3.4").
+    Бросает HTTP 429 при превышении лимита.
+    """
+    now = time.monotonic()
+    dq = _rate_buckets[key]
+    cutoff = now - window_seconds
+    while dq and dq[0] < cutoff:
+        dq.popleft()
+    if len(dq) >= max_requests:
+        _log.warning("rate limit exceeded: key=%s requests=%d/%d", key, len(dq), max_requests)
+        raise HTTPException(status_code=429, detail="Слишком много запросов, попробуйте позже")
+    dq.append(now)
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    return forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+
 
 # ---------------------------------------------------------------------------
 # Auth helpers
@@ -437,6 +476,7 @@ _TRANSFER_VERBS = (
     r"закинь|закинуть|"
     r"перекинь|перекинуть|"
     r"пришли|прислать|"
+    r"заплати|заплатить|"       # «заплати маме 500»
     r"шли)"
 )
 
@@ -778,7 +818,8 @@ class AuthResponse(BaseModel):
     expires_in_seconds: int
 
 @app.post("/auth", response_model=AuthResponse)
-def auth(req: AuthRequest, _: None = Depends(_check_app_token)):
+def auth(req: AuthRequest, request: Request, _: None = Depends(_check_app_token)):
+    _check_rate_limit(f"auth:{_client_ip(request)}", max_requests=20)
     """
     Валидирует PIN → возвращает banking JWT (15 мин, только в памяти на клиенте).
     PIN однозначно идентифицирует персону: 1111→vitya, 2222→olga, 3333→artyom.
@@ -801,7 +842,8 @@ class BiometricAuthRequest(BaseModel):
     user_id: str = "vitya"  # Android передаёт id выбранной персоны
 
 @app.post("/auth/biometric", response_model=AuthResponse)
-def auth_biometric(req: BiometricAuthRequest, _: None = Depends(_check_app_token)):
+def auth_biometric(req: BiometricAuthRequest, request: Request, _: None = Depends(_check_app_token)):
+    _check_rate_limit(f"auth-bio:{_client_ip(request)}", max_requests=20)
     """
     Аутентификация через биометрию — биометрический промпт прошёл на устройстве,
     PIN не нужен. Тело запроса содержит user_id выбранной персоны.
@@ -826,7 +868,8 @@ class PhoneVerifyResponse(BaseModel):
     expires_in_days: int = 30
 
 @app.post("/verify-phone", response_model=PhoneVerifyResponse)
-def verify_phone(req: PhoneVerifyRequest):
+def verify_phone(req: PhoneVerifyRequest, request: Request):
+    _check_rate_limit(f"verify-phone:{_client_ip(request)}", max_requests=10)
     """
     Верификация номера телефона — первый запуск приложения.
     Не требует X-Api-Key (публичный эндпоинт).
@@ -834,7 +877,7 @@ def verify_phone(req: PhoneVerifyRequest):
     """
     normalized = _normalize_phone(req.phone)
     if normalized not in ALLOWED_PHONES:
-        _log.warning("verify-phone: rejected phone=%r", req.phone)
+        _log.warning("verify-phone: rejected (unknown phone)")
         raise HTTPException(status_code=403, detail="Номер не найден")
 
     expire = datetime.now(timezone.utc) + timedelta(days=30)
@@ -843,7 +886,7 @@ def verify_phone(req: PhoneVerifyRequest):
         JWT_SECRET,
         algorithm="HS256",
     )
-    _log.info("verify-phone: app token issued for phone=%r", normalized)
+    _log.info("verify-phone: app token issued")
     return PhoneVerifyResponse(app_token=token)
 
 
@@ -895,8 +938,8 @@ def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_t
     accounts = _accounts_for_response(user_accounts)
     default_acc_id = user_accounts[0]["account_id"]
 
-    _log.info("command: user=%s txn=%s intent=%s amount=%s recipient=%r phone=%r",
-              user_id, txn_id, req.intent, req.amount, req.recipient, req.phone)
+    _log.info("command: user=%s txn=%s intent=%s amount=%s",
+              user_id, txn_id, req.intent, req.amount)
 
     # --- transfer ---
     if req.intent == "transfer":

@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-12 (unified transfer flow)*
+*Последнее обновление: 2026-04-12 (security hardening)*
 
 ### Структура репозитория
 
@@ -39,7 +39,7 @@ widget-prototype/
 │       │   ├── nlp/NlpService.kt           ← HTTP-клиент к /parse (object, не interface)
 │       │   ├── nlp/ContactMatcher.kt       ← нечёткий поиск по ContactsContract (склонения)
 │       │   ├── nlp/ContactMemory.kt        ← SharedPreferences: история выборов → boost score
-│       │   ├── BiometricHelper.kt          ← реальный BiometricPrompt (STRONG + WEAK)
+│       │   ├── BiometricHelper.kt          ← реальный BiometricPrompt (только BIOMETRIC_STRONG)
 │       │   ├── model/Models.kt             ← data-классы
 │       │   ├── ui/theme/                   ← VTB-цвета, типографика
 │       │   ├── ui/components/VitaComponents.kt ← shared UI компоненты
@@ -146,6 +146,14 @@ widget-prototype/
 | 2026-04-11 | Multi-user архитектура: PIN → user_id → banking JWT содержит user_id | 3 персоны из исследования N=97: vitya(1111)/olga(2222)/artyom(3333); каждый endpoint роутится к USERS[user_id]; баланс уменьшается динамически при подтверждении |
 | 2026-04-11 | data.py — единый источник данных (single source of truth) | main.py импортирует USERS + PHONE_INDEX из data.py; inline MOCK_ACCOUNTS/MOCK_CONTACTS удалены; PHONE_INDEX глобальный по всем пользователям |
 | 2026-04-11 | /auth/biometric принимает user_id в теле запроса | Android знает выбранную персону → передаёт persona.id → сервер кодирует в JWT |
+| 2026-04-12 | Security hardening: usesCleartextTraffic=false + network_security_config.xml + allowBackup=false | Запрет HTTP, запрет резервного копирования данных приложения |
+| 2026-04-12 | SessionManager → EncryptedSharedPreferences (AES256-GCM) | app_token и persona_id хранятся зашифрованными; зависимость androidx.security:security-crypto |
+| 2026-04-12 | BiometricHelper: только BIOMETRIC_STRONG (убран BIOMETRIC_WEAK) | WEAK не даёт криптографических гарантий; для банковского демо только STRONG |
+| 2026-04-12 | WebSocket: убран fallback ws:// (только wss://) | Запрет plaintext-транспорта согласован с network_security_config |
+| 2026-04-12 | Rate limiting на /verify-phone (10/мин), /auth (20/мин), /auth/biometric (20/мин) — in-memory sliding window | Без внешних зависимостей; лимиты щедрые для демо-режима |
+| 2026-04-12 | CORS ограничен до CORS_ORIGINS env (дефолт: vtb.vibefounder.ru); методы: GET/POST | Было allow_origins=["*"] |
+| 2026-04-12 | APP_API_KEY и JWT_SECRET: убраны fallback-значения, fail-fast при старте если env не задан | Hardcoded секреты не должны попадать в репо |
+| 2026-04-12 | NLP: добавлен «заплати/заплатить» в _TRANSFER_VERBS | Частое разговорное слово; покрыто регрессионными тестами |
 
 ---
 

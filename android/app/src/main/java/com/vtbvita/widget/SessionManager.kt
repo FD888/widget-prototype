@@ -1,12 +1,28 @@
 package com.vtbvita.widget
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 object SessionManager {
     private const val PREFS = "vita_session"
-    private const val KEY_PERSONA          = "persona_id"
-    private const val KEY_APP_TOKEN        = "app_token"
+    private const val KEY_PERSONA           = "persona_id"
+    private const val KEY_APP_TOKEN         = "app_token"
     private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
+
+    private fun prefs(context: Context): SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            context,
+            PREFS,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
 
     // ------------------------------------------------------------------
     // App token — выдаётся сервером после верификации номера телефона.
@@ -14,12 +30,10 @@ object SessionManager {
     // ------------------------------------------------------------------
 
     fun saveAppToken(context: Context, token: String) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_APP_TOKEN, token).apply()
+        prefs(context).edit().putString(KEY_APP_TOKEN, token).apply()
 
     fun getAppToken(context: Context): String? =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_APP_TOKEN, null)
+        prefs(context).getString(KEY_APP_TOKEN, null)
 
     fun hasAppToken(context: Context): Boolean = getAppToken(context) != null
 
@@ -29,16 +43,13 @@ object SessionManager {
     // ------------------------------------------------------------------
 
     fun login(context: Context, personaId: String) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_PERSONA, personaId).apply()
+        prefs(context).edit().putString(KEY_PERSONA, personaId).apply()
 
     fun logout(context: Context) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().remove(KEY_PERSONA).apply()   // app_token НЕ сбрасываем при logout
+        prefs(context).edit().remove(KEY_PERSONA).apply()   // app_token НЕ сбрасываем при logout
 
     fun getPersonaId(context: Context): String? =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_PERSONA, null)
+        prefs(context).getString(KEY_PERSONA, null)
 
     fun isLoggedIn(context: Context): Boolean = getPersonaId(context) != null
 
@@ -50,10 +61,8 @@ object SessionManager {
     // ------------------------------------------------------------------
 
     fun setBiometricEnabled(context: Context, enabled: Boolean) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_BIOMETRIC_ENABLED, enabled).apply()
+        prefs(context).edit().putBoolean(KEY_BIOMETRIC_ENABLED, enabled).apply()
 
     fun isBiometricEnabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_BIOMETRIC_ENABLED, false)
+        prefs(context).getBoolean(KEY_BIOMETRIC_ENABLED, false)
 }
