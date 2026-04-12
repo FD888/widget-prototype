@@ -6,7 +6,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.core.view.WindowCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,8 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -100,7 +97,6 @@ class TransferFlowActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
         BankingSession.restoreFromIntent(intent)
 
         val amount = if (intent.hasExtra(EXTRA_AMOUNT)) intent.getDoubleExtra(EXTRA_AMOUNT, 0.0) else null
@@ -206,9 +202,6 @@ private fun ContactSelectionSheet(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                // Фиксированная высота как у экрана подтверждения + отступ под клавиатуру
-                .fillMaxHeight(0.85f)
-                .imePadding()
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
@@ -216,7 +209,7 @@ private fun ContactSelectionSheet(
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 // Handle bar
                 Box(
                     modifier = Modifier
@@ -262,10 +255,9 @@ private fun ContactSelectionSheet(
 
                 Spacer(Modifier.height(8.dp))
 
-                // Список контактов занимает оставшееся место
                 LazyColumn(
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.heightIn(min = 300.dp)
                 ) {
                     if (displayedCandidates.isEmpty() && searchText.isNotBlank() && !isSearching) {
                         item {

@@ -630,12 +630,12 @@ private fun submitText(
                         ContactMatcher.isHighConfidence(filtered) -> {
                             val c = filtered[0]
                             android.util.Log.d("VitaTransfer", "→ HIGH CONFIDENCE, auto-resolving to '${c.displayName}'")
-                            // Для back-навигации: альтернативы (без авто-выбранного контакта).
-                            // Сначала из filtered, если там пусто — из полного списка.
-                            val alternatives = (filtered + allCandidates)
-                                .distinctBy { it.phone }
-                                .filter { it.phone != c.phone }
-                                .take(5)
+                            // Для back-навигации: авто-выбранный первым, затем остальные альтернативы.
+                            val alternatives = listOf(c) +
+                                (filtered + allCandidates)
+                                    .distinctBy { it.phone }
+                                    .filter { it.phone != c.phone }
+                                    .take(4)
                             TransferFlowActivity.pendingCandidates = alternatives
                             TransferFlowActivity.pendingRecipientRaw = recipientRaw
                             TransferFlowActivity.pendingAutoContact = c
