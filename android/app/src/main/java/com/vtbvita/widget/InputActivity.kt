@@ -22,9 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -33,10 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.fragment.app.FragmentActivity
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
@@ -52,8 +47,17 @@ import com.vtbvita.widget.model.ConfirmationData
 import com.vtbvita.widget.nlp.ContactCandidate
 import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.VtbBlue
-import com.vtbvita.widget.ui.theme.VtbBlueMid
+import com.vtbvita.widget.ui.effects.auroraBackground
+import com.vtbvita.widget.ui.theme.OmegaBrandDark
+import com.vtbvita.widget.ui.theme.OmegaBrandDeep
+import com.vtbvita.widget.ui.theme.OmegaChip
+import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaOverlay
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaTextDisabled
+import com.vtbvita.widget.ui.theme.OmegaTextHint
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -286,7 +290,7 @@ private fun InputOverlay(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.7f))
+            .background(OmegaOverlay)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -319,9 +323,10 @@ private fun InputOverlay(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp)
-                    .background(
-                        Brush.horizontalGradient(listOf(VtbBlue, VtbBlueMid)),
-                        RoundedCornerShape(32.dp)
+                    .auroraBackground(
+                        isRecording = isRecording,
+                        amplitude   = voiceAmplitude,
+                        cornerRadius = 32.dp
                     )
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -331,7 +336,7 @@ private fun InputOverlay(
                     Spacer(Modifier.width(4.dp))
                     Text(
                         text = if (isLoading) "Обрабатываю…" else startVoiceText ?: "",
-                        color = Color.White.copy(alpha = 0.75f),
+                        color = OmegaTextSecondary,
                         fontSize = 15.sp,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -343,7 +348,7 @@ private fun InputOverlay(
                     Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .background(Color(0xFFD32F2F), CircleShape)
+                            .background(OmegaError, CircleShape)
                             .clip(CircleShape)
                             .clickable {
                                 discardRecording()
@@ -352,9 +357,9 @@ private fun InputOverlay(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Default.Close,
+                            painter = painterResource(R.drawable.ic_close),
                             contentDescription = "Отмена",
-                            tint = Color.White,
+                            tint = OmegaTextPrimary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -370,7 +375,7 @@ private fun InputOverlay(
                     ) {
                         Text(
                             text     = if (partialText.isEmpty()) "Говорите..." else partialText,
-                            color    = Color.White.copy(alpha = if (partialText.isEmpty()) 0.40f else 0.92f),
+                            color    = if (partialText.isEmpty()) OmegaTextHint else OmegaTextPrimary,
                             fontSize = 17.sp,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
@@ -401,7 +406,7 @@ private fun InputOverlay(
                             for (i in 0..2) {
                                 val rPhase = (ripplePhase + i / 3f) % 1f
                                 drawCircle(
-                                    color  = Color.White.copy(alpha = (1f - rPhase) * 0.45f),
+                                    color  = OmegaTextPrimary.copy(alpha = (1f - rPhase) * 0.45f),
                                     radius = rPhase * maxR * scale,
                                     style  = Stroke(width = 1.5.dp.toPx())
                                 )
@@ -411,7 +416,7 @@ private fun InputOverlay(
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
-                                .background(Color(0xFF001F6E), CircleShape)
+                                .background(OmegaBrandDark, CircleShape)
                                 .clip(CircleShape)
                                 .clickable {
                                     val lastText = partialText
@@ -423,7 +428,7 @@ private fun InputOverlay(
                             Icon(
                                 painter = painterResource(R.drawable.ic_arrow_up),
                                 contentDescription = "Отправить",
-                                tint     = Color.White,
+                                tint     = OmegaTextPrimary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -437,8 +442,8 @@ private fun InputOverlay(
                         modifier = Modifier
                             .weight(1f)
                             .focusRequester(focusRequester),
-                        textStyle = TextStyle(color = Color.White, fontSize = 19.sp),
-                        cursorBrush = SolidColor(Color.White),
+                        textStyle = TextStyle(color = OmegaTextPrimary, fontSize = 19.sp),
+                        cursorBrush = SolidColor(OmegaTextPrimary),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = {
@@ -460,7 +465,7 @@ private fun InputOverlay(
                             if (text.isEmpty()) {
                                 Text(
                                     "Как настроение?",
-                                    color = Color.White.copy(alpha = 0.6f),
+                                    color = OmegaTextSecondary,
                                     fontSize = 19.sp
                                 )
                             }
@@ -475,7 +480,7 @@ private fun InputOverlay(
                         Box(
                             modifier = Modifier
                                 .size(44.dp)
-                                .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
+                                .background(OmegaChip, RoundedCornerShape(22.dp))
                                 .clickable {
                                     if (!isLoading) {
                                         errorMsg = ""
@@ -496,7 +501,7 @@ private fun InputOverlay(
                             Icon(
                                 painter = painterResource(R.drawable.ic_arrow_up),
                                 contentDescription = "Отправить",
-                                tint = Color.White,
+                                tint = OmegaTextPrimary,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -505,7 +510,7 @@ private fun InputOverlay(
                         Box(
                             modifier = Modifier
                                 .size(44.dp)
-                                .background(Color.White.copy(alpha = 0.20f), RoundedCornerShape(22.dp))
+                                .background(OmegaChip, RoundedCornerShape(22.dp))
                                 .clickable {
                                     val hasPermission = ContextCompat.checkSelfPermission(
                                         context, Manifest.permission.RECORD_AUDIO
@@ -521,7 +526,7 @@ private fun InputOverlay(
                             Icon(
                                 painter = painterResource(R.drawable.ic_mic),
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = OmegaTextPrimary,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -534,7 +539,7 @@ private fun InputOverlay(
                 Spacer(Modifier.height(6.dp))
                 androidx.compose.material3.Text(
                     text = errorMsg,
-                    color = Color(0xFFFF6B6B),
+                    color = OmegaError,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -804,7 +809,7 @@ private fun InlinePinOverlay(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF001A5E).copy(alpha = 0.97f), RoundedCornerShape(20.dp))
+            .background(OmegaBrandDeep.copy(alpha = 0.97f), RoundedCornerShape(20.dp))
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -815,12 +820,12 @@ private fun InlinePinOverlay(
         ) {
             androidx.compose.material3.Text(
                 "Введите PIN",
-                color = Color.White,
+                color = OmegaTextPrimary,
                 fontSize = 15.sp
             )
             androidx.compose.material3.Text(
                 "Отмена",
-                color = Color.White.copy(alpha = 0.6f),
+                color = OmegaTextSecondary,
                 fontSize = 13.sp,
                 modifier = Modifier.clickable(onClick = onCancel)
             )
@@ -836,9 +841,9 @@ private fun InlinePinOverlay(
                         .size(12.dp)
                         .background(
                             when {
-                                errorMsg.isNotBlank() -> Color(0xFFE57373)
-                                i < pin.length -> Color.White
-                                else -> Color.White.copy(alpha = 0.3f)
+                                errorMsg.isNotBlank() -> OmegaError
+                                i < pin.length -> OmegaTextPrimary
+                                else -> OmegaTextDisabled
                             },
                             CircleShape
                         )
@@ -848,7 +853,7 @@ private fun InlinePinOverlay(
 
         if (errorMsg.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
-            androidx.compose.material3.Text(errorMsg, fontSize = 11.sp, color = Color(0xFFE57373))
+            androidx.compose.material3.Text(errorMsg, fontSize = 11.sp, color = OmegaError)
         }
 
         Spacer(Modifier.height(12.dp))
@@ -869,7 +874,7 @@ private fun InlinePinOverlay(
                             Box(
                                 modifier = Modifier
                                     .size(56.dp)
-                                    .background(Color.White.copy(alpha = 0.10f), CircleShape)
+                                    .background(OmegaSurface, CircleShape)
                                     .clickable(enabled = !isLoading) {
                                         BiometricHelper.authenticate(
                                             activity = activity!!,
@@ -879,9 +884,9 @@ private fun InlinePinOverlay(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    Icons.Default.Fingerprint,
+                                    painter = painterResource(R.drawable.ic_fingerprint),
                                     contentDescription = "Биометрия",
-                                    tint = Color.White.copy(alpha = 0.75f),
+                                    tint = OmegaTextSecondary,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -914,12 +919,12 @@ private fun QuickChip(
         modifier = modifier
             .height(36.dp)
             .background(
-                Color.White.copy(alpha = if (enabled) 0.18f else 0.08f),
+                if (enabled) OmegaChip else OmegaSurface,
                 RoundedCornerShape(18.dp)
             )
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = Color.White.copy(alpha = if (enabled) 1f else 0.4f), fontSize = 16.sp)
+        Text(label, color = if (enabled) OmegaTextPrimary else OmegaTextDisabled, fontSize = 16.sp)
     }
 }

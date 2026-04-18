@@ -23,21 +23,28 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.vtbvita.widget.ui.components.OmegaButton
+import com.vtbvita.widget.ui.components.OmegaButtonStyle
+import com.vtbvita.widget.ui.components.OmegaSheetHeader
+import com.vtbvita.widget.ui.components.OmegaTextField
+import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
+import com.vtbvita.widget.ui.theme.OmegaChip
+import com.vtbvita.widget.ui.theme.OmegaScrim
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.VtbBlue
-import com.vtbvita.widget.ui.theme.VtbBluePale
-import com.vtbvita.widget.ui.theme.VtbSecondary
 
 data class Contact(val name: String, val phone: String)
 
 /**
  * Шаг 1 флоу перевода: выбор получателя из контактов телефона.
- * После выбора запускает TransferDetailsActivity (ConfirmActivity с пустой суммой).
  */
 class ContactPickerActivity : ComponentActivity() {
 
@@ -50,7 +57,6 @@ class ContactPickerActivity : ComponentActivity() {
             }
     }
 
-    // Флаг: мы сами запустили дочерний экран — onStop не должен убивать activity
     private var startingTransfer = false
 
     override fun onStop() {
@@ -60,7 +66,7 @@ class ContactPickerActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        startingTransfer = false  // вернулись из TransferDetails — снова готовы к выбору
+        startingTransfer = false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,7 +87,6 @@ class ContactPickerActivity : ComponentActivity() {
                         BankingSession.putInIntent(i)
                         startingTransfer = true
                         startActivity(i)
-                        // finish() убран — activity остаётся в стеке для возврата
                     }
                 )
             }
@@ -123,7 +128,7 @@ private fun ContactPickerSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
+            .background(OmegaScrim)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -131,96 +136,78 @@ private fun ContactPickerSheet(
             ),
         contentAlignment = Alignment.BottomCenter
     ) {
-        Card(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.88f)
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(OmegaSurface)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
-                ) { },
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) { }
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Handle bar
-                Box(
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                            RoundedCornerShape(2.dp)
-                        )
-                        .align(Alignment.CenterHorizontally)
-                )
+            OmegaSheetHeader(title = "Кому перевести?")
 
-                Column(modifier = Modifier.padding(horizontal = 24.dp)) {
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "Кому перевести?",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    Spacer(Modifier.height(12.dp))
+            OmegaTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = "",
+                placeholder = "Имя или номер телефона",
+                modifier = Modifier.padding(horizontal = 16.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+            )
 
-                    // Поиск
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        placeholder = { Text("Имя или номер телефона") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(8.dp))
+
+            when {
+                !hasPermission -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                "Нужен доступ к контактам",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = OmegaTextPrimary
+                            )
+                            OmegaButton(
+                                text = "Разрешить",
+                                style = OmegaButtonStyle.Brand,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                onClick = { permissionLauncher.launch(Manifest.permission.READ_CONTACTS) }
+                            )
+                        }
+                    }
                 }
-
-                when {
-                    !hasPermission -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    "Нужен доступ к контактам",
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                                Spacer(Modifier.height(8.dp))
-                                Button(onClick = {
-                                    permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-                                }) { Text("Разрешить") }
-                            }
-                        }
+                filtered.isEmpty() && query.isNotBlank() -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        OmegaButton(
+                            text = "Перевести на «$query»",
+                            style = OmegaButtonStyle.Brand,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { onContactSelected(Contact("", query)) }
+                        )
                     }
-                    filtered.isEmpty() && query.isNotBlank() -> {
-                        // Если ничего не найдено — можно ввести номер вручную
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 16.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    onContactSelected(Contact("", query))
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Перевести на «$query»")
-                            }
+                }
+                else -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(filtered) { contact ->
+                            ContactRow(contact = contact, onClick = { onContactSelected(contact) })
                         }
-                    }
-                    else -> {
-                        LazyColumn(
-                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp)
-                        ) {
-                            items(filtered) { contact ->
-                                ContactRow(contact = contact, onClick = { onContactSelected(contact) })
-                                HorizontalDivider(thickness = 0.5.dp)
-                            }
-                        }
+                        item { Spacer(Modifier.height(16.dp)) }
                     }
                 }
             }
@@ -234,29 +221,35 @@ private fun ContactRow(contact: Contact, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Аватар-инициалы
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .background(VtbBluePale, CircleShape),
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(OmegaChip),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = contact.name.firstOrNull()?.uppercase() ?: "#",
-                color = VtbBlue,
-                fontWeight = FontWeight.Bold
+                color = OmegaTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
             )
         }
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(contact.name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                contact.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = OmegaTextPrimary,
+                fontWeight = FontWeight.Medium
+            )
             Text(
                 contact.phone,
                 style = MaterialTheme.typography.bodySmall,
-                color = VtbSecondary
+                color = OmegaTextSecondary
             )
         }
     }

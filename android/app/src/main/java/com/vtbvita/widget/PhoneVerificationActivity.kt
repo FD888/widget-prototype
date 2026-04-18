@@ -13,17 +13,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vtbvita.widget.api.MockApiService
+import com.vtbvita.widget.ui.components.OmegaButton
+import com.vtbvita.widget.ui.components.OmegaButtonStyle
+import com.vtbvita.widget.ui.theme.OmegaBrandGradient
+import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaTextDisabled
+import com.vtbvita.widget.ui.theme.OmegaTextHint
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.VtbBlue
-import com.vtbvita.widget.ui.theme.VtbBlueMid
 import kotlinx.coroutines.launch
 
 class PhoneVerificationActivity : ComponentActivity() {
@@ -80,7 +84,7 @@ fun PhoneVerificationScreen(onSuccess: (String) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF001A5E), VtbBlue, VtbBlueMid)))
+            .background(OmegaBrandGradient)
     ) {
         Column(
             modifier = Modifier
@@ -94,13 +98,13 @@ fun PhoneVerificationScreen(onSuccess: (String) -> Unit) {
                 "VTB Vita",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = OmegaTextPrimary
             )
             Spacer(Modifier.height(8.dp))
             Text(
                 "Введите номер телефона",
                 fontSize = 15.sp,
-                color = Color.White.copy(alpha = 0.7f)
+                color = OmegaTextSecondary
             )
 
             Spacer(Modifier.height(40.dp))
@@ -108,15 +112,14 @@ fun PhoneVerificationScreen(onSuccess: (String) -> Unit) {
             OutlinedTextField(
                 value = phone,
                 onValueChange = { input ->
-                    // Только цифры, не больше 11 символов
                     val digits = input.filter { it.isDigit() }.take(11)
                     phone = digits
                     errorMsg = ""
                 },
                 placeholder = {
-                    Text("900 000 00 00", color = Color.White.copy(alpha = 0.35f))
+                    Text("900 000 00 00", color = OmegaTextHint)
                 },
-                prefix = { Text("+7 ", color = Color.White, fontWeight = FontWeight.Medium) },
+                prefix = { Text("+7 ", color = OmegaTextPrimary, fontWeight = FontWeight.Medium) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Phone,
@@ -124,11 +127,11 @@ fun PhoneVerificationScreen(onSuccess: (String) -> Unit) {
                 ),
                 keyboardActions = KeyboardActions(onDone = { submit() }),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    focusedBorderColor = Color.White.copy(alpha = 0.8f),
-                    unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
-                    cursorColor = Color.White,
+                    focusedTextColor = OmegaTextPrimary,
+                    unfocusedTextColor = OmegaTextPrimary,
+                    focusedBorderColor = OmegaTextPrimary,
+                    unfocusedBorderColor = OmegaTextDisabled,
+                    cursorColor = OmegaTextPrimary,
                 ),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -140,37 +143,21 @@ fun PhoneVerificationScreen(onSuccess: (String) -> Unit) {
                 Text(
                     errorMsg,
                     fontSize = 13.sp,
-                    color = Color(0xFFE57373),
+                    color = OmegaError,
                     modifier = Modifier.align(Alignment.Start)
                 )
             }
 
             Spacer(Modifier.height(24.dp))
 
-            Button(
+            OmegaButton(
+                text = "Продолжить",
                 onClick = { submit() },
                 enabled = !isLoading && phone.filter { it.isDigit() }.length >= 10,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White,
-                    contentColor = VtbBlue,
-                    disabledContainerColor = Color.White.copy(alpha = 0.3f),
-                    disabledContentColor = Color.White.copy(alpha = 0.5f)
-                )
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        color = VtbBlue,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text("Продолжить", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                }
-            }
+                modifier = Modifier.fillMaxWidth(),
+                isLoading = isLoading,
+                style = OmegaButtonStyle.Brand
+            )
         }
     }
 }

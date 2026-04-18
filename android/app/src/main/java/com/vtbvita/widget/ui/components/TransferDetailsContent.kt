@@ -12,26 +12,28 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.vtbvita.widget.R
 import com.vtbvita.widget.api.MockApiService
-import com.vtbvita.widget.ui.theme.VtbGreen
+import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaOverlay
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaSuccess
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/**
- * Shared composable для экрана деталей перевода.
- * Используется из TransferDetailsActivity (путь через ContactPicker)
- * и TransferFlowActivity (путь через NLP → disambiguation).
- */
 @Composable
 fun TransferDetailsSheet(
     recipientName: String,
@@ -44,6 +46,7 @@ fun TransferDetailsSheet(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
     var amountText by remember {
         mutableStateOf(if (prefillAmount > 0.0) prefillAmount.toLong().toString() else "")
     }
@@ -67,7 +70,7 @@ fun TransferDetailsSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
+            .background(OmegaOverlay)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -77,197 +80,196 @@ fun TransferDetailsSheet(
     ) {
         AnimatedVisibility(
             visible = visible,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = tween(durationMillis = 280)
-            ) + fadeIn(animationSpec = tween(200))
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300)) +
+                    fadeIn(animationSpec = tween(220))
         ) {
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(OmegaSurface)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
-                    ) { },
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) { }
             ) {
-                Column {
-                    Box {
-                        SheetGradientHeader(
-                            title = "Перевод",
-                            subtitle = recipientName.ifBlank { recipientPhone }.ifBlank { null }
-                        )
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = 8.dp, top = 20.dp)
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Назад к контактам",
-                                tint = Color.White
-                            )
-                        }
-                    }
-
-                    Column(
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OmegaSheetHeader(
+                        title = "Перевод",
+                        subtitle = recipientName.ifBlank { recipientPhone }.ifBlank { null }
+                    )
+                    IconButton(
+                        onClick = onDismiss,
                         modifier = Modifier
-                            .padding(horizontal = 20.dp, vertical = 16.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 8.dp, top = 20.dp)
                     ) {
-                        TransferDetailRow("Получатель", recipientName.ifBlank { recipientPhone })
-                        if (recipientName.isNotBlank() && recipientPhone.isNotBlank()) {
-                            TransferDetailRow("Телефон", recipientPhone)
-                        }
-                        if (bankDisplayName.isNotBlank()) {
-                            TransferDetailRow(
-                                "Имя в банке", bankDisplayName,
-                                valueColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        HorizontalDivider(thickness = 0.5.dp)
-
-                        OutlinedTextField(
-                            value = amountText,
-                            onValueChange = { v -> amountText = v.filter { it.isDigit() } },
-                            label = { Text("Сумма, ₽") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            suffix = { Text("₽") }
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_up),
+                            contentDescription = "Назад",
+                            tint = OmegaTextPrimary
                         )
-
-                        BankCarousel(selected = selectedBank, onSelect = { selectedBank = it })
-
-                        if (accounts.size > 1) {
-                            TransferAccountDropdown(accounts, selectedAccountId) { selectedAccountId = it }
-                        } else if (accounts.isNotEmpty()) {
-                            val acc = accounts.first()
-                            TransferDetailRow("Счёт списания", "${acc.name} ${acc.masked}")
-                        }
-
-                        val selectedAcc = accounts.find { it.id == selectedAccountId }
-                        val amount = amountText.toDoubleOrNull() ?: 0.0
-                        selectedAcc?.let {
-                            val after = it.balance - amount
-                            TransferDetailRow(
-                                "После перевода",
-                                formatRub(after),
-                                valueColor = if (after >= 0) VtbGreen else MaterialTheme.colorScheme.error
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = comment,
-                            onValueChange = { comment = it },
-                            label = { Text("Комментарий (необязательно)") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
-                        )
-
-                        error?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.weight(1f).height(48.dp)
-                            ) { Text("Отмена") }
-
-                            GradientButton(
-                                text = "Перевести",
-                                isLoading = isLoading,
-                                enabled = !isLoading && amountText.isNotBlank(),
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    val amt = amountText.toDoubleOrNull()
-                                    if (amt == null || amt <= 0) { error = "Введите сумму"; return@GradientButton }
-                                    isLoading = true; error = null
-                                    scope.launch {
-                                        runCatching {
-                                            MockApiService.command(
-                                                intent = "transfer",
-                                                amount = amt,
-                                                recipient = recipientPhone.ifBlank { recipientName },
-                                                phone = null,
-                                                context = context
-                                            )
-                                        }.onSuccess { data ->
-                                            runCatching {
-                                                MockApiService.confirm(
-                                                    transactionId = data.transactionId,
-                                                    sourceAccountId = selectedAccountId,
-                                                    selectedBank = selectedBank,
-                                                    context = context
-                                                )
-                                            }.onSuccess { result ->
-                                                onSuccess("✓ ${result.message}")
-                                            }.onFailure { e ->
-                                                error = e.message ?: "Ошибка"; isLoading = false
-                                            }
-                                        }.onFailure { e ->
-                                            error = e.message ?: "Ошибка соединения"; isLoading = false
-                                        }
-                                    }
-                                }
-                            )
-                        }
-
-                        Spacer(Modifier.height(4.dp))
                     }
                 }
-            }
-        }
-    }
-}
 
-@Composable
-fun TransferDetailRow(
-    label: String,
-    value: String,
-    valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyMedium, color = valueColor)
-    }
-}
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OmegaInfoCard(
+                        label = "Получатель",
+                        value = recipientName.ifBlank { recipientPhone }
+                    )
+                    if (recipientName.isNotBlank() && recipientPhone.isNotBlank()) {
+                        OmegaInfoCard(label = "Телефон", value = recipientPhone)
+                    }
+                    if (bankDisplayName.isNotBlank()) {
+                        OmegaInfoCard(
+                            label = "Банк получателя",
+                            value = bankDisplayName,
+                            valueColor = OmegaTextSecondary
+                        )
+                    }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TransferAccountDropdown(
-    accounts: List<com.vtbvita.widget.model.AccountInfo>,
-    selectedId: String,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selected = accounts.find { it.id == selectedId } ?: accounts.first()
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = "${selected.name} ${selected.masked}", onValueChange = {}, readOnly = true,
-            label = { Text("Счёт списания") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor()
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            accounts.forEach { acc ->
-                DropdownMenuItem(
-                    text = { Text("${acc.name} ${acc.masked} · ${formatRub(acc.balance)}") },
-                    onClick = { onSelect(acc.id); expanded = false }
-                )
+                    val selectedAcc = accounts.find { it.id == selectedAccountId }
+                    if (accounts.size > 1) {
+                        OmegaInfoCard(
+                            label = "Счёт списания",
+                            value = selectedAcc?.let { "${it.name} •• ${it.masked.takeLast(4)}" }
+                                ?: "Загрузка...",
+                            trailingContent = {
+                                Text("▼", color = OmegaTextSecondary)
+                            },
+                            onClick = {
+                                val idx = accounts.indexOfFirst { it.id == selectedAccountId }
+                                selectedAccountId = accounts.getOrNull(idx + 1)?.id
+                                    ?: accounts.firstOrNull()?.id ?: selectedAccountId
+                            }
+                        )
+                    } else if (selectedAcc != null) {
+                        OmegaInfoCard(
+                            label = "Счёт списания",
+                            value = "${selectedAcc.name} •• ${selectedAcc.masked.takeLast(4)}"
+                        )
+                    }
+
+                    OmegaBankCarousel(
+                        selected = selectedBank,
+                        onSelect = { selectedBank = it }
+                    )
+
+                    OmegaTextField(
+                        value = amountText,
+                        onValueChange = { v -> amountText = v.filter { it.isDigit() } },
+                        label = "Сумма",
+                        placeholder = "0 ₽",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        trailingContent = {
+                            Text("₽", color = OmegaTextSecondary, fontWeight = FontWeight.Medium)
+                        }
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("500", "1000", "2000", "5000").forEach { preset ->
+                            OmegaAmountChip(
+                                label = "+$preset ₽",
+                                selected = amountText == preset,
+                                onClick = { amountText = preset }
+                            )
+                        }
+                    }
+
+                    selectedAcc?.let { acc ->
+                        val amount = amountText.toDoubleOrNull() ?: 0.0
+                        val after = acc.balance - amount
+                        OmegaInfoCard(
+                            label = "После перевода",
+                            value = formatRub(after),
+                            valueColor = if (after >= 0) OmegaSuccess else OmegaError
+                        )
+                    }
+
+                    OmegaTextField(
+                        value = comment,
+                        onValueChange = { comment = it },
+                        label = "Сообщение получателю",
+                        placeholder = "Необязательно"
+                    )
+
+                    error?.let {
+                        Text(
+                            it,
+                            color = OmegaError,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(OmegaSurface)
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OmegaButton(
+                        text = "Перевести",
+                        isLoading = isLoading,
+                        enabled = !isLoading && amountText.isNotBlank(),
+                        style = OmegaButtonStyle.Brand,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            val amt = amountText.toDoubleOrNull()
+                            if (amt == null || amt <= 0) { error = "Введите сумму"; return@OmegaButton }
+                            isLoading = true; error = null
+                            scope.launch {
+                                runCatching {
+                                    MockApiService.command(
+                                        intent = "transfer",
+                                        amount = amt,
+                                        recipient = recipientPhone.ifBlank { recipientName },
+                                        phone = null,
+                                        context = context
+                                    )
+                                }.onSuccess { data ->
+                                    runCatching {
+                                        MockApiService.confirm(
+                                            transactionId = data.transactionId,
+                                            sourceAccountId = selectedAccountId,
+                                            selectedBank = selectedBank,
+                                            context = context
+                                        )
+                                    }.onSuccess { result ->
+                                        onSuccess("✓ ${result.message}")
+                                    }.onFailure { e ->
+                                        error = e.message ?: "Ошибка"; isLoading = false
+                                    }
+                                }.onFailure { e ->
+                                    error = e.message ?: "Ошибка соединения"; isLoading = false
+                                }
+                            }
+                        }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Отмена",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OmegaTextSecondary
+                        )
+                    }
+                }
             }
         }
     }

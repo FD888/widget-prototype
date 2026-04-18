@@ -13,24 +13,37 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.Switch
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vtbvita.widget.R
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.AccountInfo
-import com.vtbvita.widget.ui.theme.*
+import com.vtbvita.widget.ui.theme.GalaxyPurple
+import com.vtbvita.widget.ui.theme.OmegaBackground
+import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
+import com.vtbvita.widget.ui.theme.OmegaChip
+import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaErrorBg
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaSurfaceAlt
+import com.vtbvita.widget.ui.theme.OmegaSuccess
+import com.vtbvita.widget.ui.theme.OmegaTextDisabled
+import com.vtbvita.widget.ui.theme.OmegaTextHint
+import com.vtbvita.widget.ui.theme.OmegaTextOnBrand
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.OmegaType
+import com.vtbvita.widget.ui.theme.OmegaWarning
+import com.vtbvita.widget.ui.theme.GalaxyPurple.v500
+import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import java.util.Locale
 
 private val TAB_NAMES = listOf("Главная", "Платежи", "Продукты", "История", "Чат")
@@ -84,36 +97,36 @@ fun MockBankScreen(personaId: String, onLogout: () -> Unit = {}) {
     var selectedTab by remember { mutableStateOf(0) }
     val context = LocalContext.current
 
-    Column(modifier = Modifier.fillMaxSize().background(VtbSurfaceBg)) {
+    Column(modifier = Modifier.fillMaxSize().background(OmegaBackground)) {
         // Top bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .background(VtbBlue)
+                .background(OmegaBrandPrimary)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("✦", color = Color.White, fontSize = 14.sp)
+            Text("✦", color = OmegaTextOnBrand, style = OmegaType.BodyTightM)
             Spacer(Modifier.width(8.dp))
             Text(
                 "VTB Vita · демо-режим",
-                color = Color.White,
-                fontSize = 13.sp,
+                color = OmegaTextOnBrand,
+                style = OmegaType.BodyTightM,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.weight(1f)
             )
             Box(
                 modifier = Modifier
                     .size(32.dp)
-                    .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                    .background(OmegaTextOnBrand.copy(alpha = 0.15f), CircleShape)
                     .clickable(onClick = onLogout),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.AutoMirrored.Filled.ExitToApp,
+                    painter = painterResource(R.drawable.ic_exit),
                     contentDescription = "Выйти",
-                    tint = Color.White,
+                    tint = OmegaTextOnBrand,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -134,7 +147,7 @@ fun MockBankScreen(personaId: String, onLogout: () -> Unit = {}) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(VtbBlue)
+                .background(OmegaBrandPrimary)
                 .navigationBarsPadding()
                 .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -150,15 +163,15 @@ fun MockBankScreen(personaId: String, onLogout: () -> Unit = {}) {
                         modifier = Modifier
                             .size(4.dp)
                             .background(
-                                if (i == selectedTab) Color.White else Color.Transparent,
+                                if (i == selectedTab) OmegaTextOnBrand else Color.Transparent,
                                 RoundedCornerShape(2.dp)
                             )
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         label,
-                        fontSize = 11.sp,
-                        color = if (i == selectedTab) Color.White else Color.White.copy(alpha = 0.5f),
+                        style = OmegaType.BodyTightS,
+                        color = if (i == selectedTab) OmegaTextOnBrand else OmegaTextOnBrand.copy(alpha = 0.5f),
                         fontWeight = if (i == selectedTab) FontWeight.SemiBold else FontWeight.Normal
                     )
                 }
@@ -189,9 +202,9 @@ fun MainTab(context: Context) {
         item {
             Text(
                 "Мои счета",
-                fontSize = 20.sp,
+                style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
-                color = VtbOnSurface,
+                color = OmegaTextPrimary,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
         }
@@ -203,19 +216,19 @@ fun MainTab(context: Context) {
                         .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = VtbBlue)
+                    CircularProgressIndicator(color = OmegaBrandPrimary)
                 }
             }
             error != null -> item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE))
+                    colors = CardDefaults.cardColors(containerColor = OmegaErrorBg)
                 ) {
                     Text(
                         "Не удалось загрузить счета: $error",
                         modifier = Modifier.padding(16.dp),
-                        color = VtbRed,
-                        fontSize = 13.sp
+                        color = OmegaError,
+                        style = OmegaType.BodyTightM
                     )
                 }
             }
@@ -226,9 +239,9 @@ fun MainTab(context: Context) {
             Button(
                 onClick = { context.startActivity(Intent(context, InputActivity::class.java)) },
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = VtbBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = OmegaBrandPrimary)
             ) {
-                Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(painter = painterResource(R.drawable.ic_mic), contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Открыть Vita")
             }
@@ -258,15 +271,15 @@ private fun WidgetSettingsCard(context: Context) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text(
                 "Настройки виджета",
-                fontSize = 14.sp,
+                style = OmegaType.BodyTightMediumL,
                 fontWeight = FontWeight.SemiBold,
-                color = VtbOnSurface
+                color = OmegaTextPrimary
             )
             Spacer(Modifier.height(10.dp))
 
@@ -275,24 +288,24 @@ private fun WidgetSettingsCard(context: Context) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Default.Fingerprint,
+                    painter = painterResource(R.drawable.ic_fingerprint),
                     contentDescription = null,
-                    tint = if (biometricAvailable) VtbBlue else VtbSecondary,
+                    tint = if (biometricAvailable) OmegaBrandPrimary else OmegaTextSecondary,
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "Биометрия",
-                        fontSize = 14.sp,
+                        style = OmegaType.BodyTightL,
                         fontWeight = FontWeight.Medium,
-                        color = VtbOnSurface
+                        color = OmegaTextPrimary
                     )
                     Text(
                         if (biometricAvailable) "Вход по отпечатку / лицу вместо PIN"
                         else "Биометрический сенсор не обнаружен",
-                        fontSize = 12.sp,
-                        color = VtbSecondary
+                        style = OmegaType.BodyTightM,
+                        color = OmegaTextSecondary
                     )
                 }
                 Switch(
@@ -311,10 +324,10 @@ private fun WidgetSettingsCard(context: Context) {
 @Composable
 fun AccountCard(account: AccountInfo) {
     val cardColor = when (account.type) {
-        "debit"   -> VtbBlue
-        "credit"  -> Color(0xFFE65100)
-        "savings" -> VtbGreen
-        else      -> VtbBlueMid
+        "debit"   -> OmegaBrandPrimary
+        "credit"  -> OmegaWarning
+        "savings" -> OmegaSuccess
+        else      -> OmegaBrandPrimary
     }
     val typeLabel = when (account.type) {
         "debit"   -> "Дебетовая карта"
@@ -332,23 +345,23 @@ fun AccountCard(account: AccountInfo) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.CreditCard,
+                    painter = painterResource(R.drawable.ic_card_arrow_right),
                     contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.7f),
+                    tint = OmegaTextOnBrand.copy(alpha = 0.7f),
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(typeLabel, fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+                Text(typeLabel, style = OmegaType.BodyTightM, color = OmegaTextOnBrand.copy(alpha = 0.7f))
             }
             Spacer(Modifier.height(10.dp))
             Text(
                 formatRub(account.balance),
-                fontSize = 26.sp,
+                style = OmegaType.PinDigit,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = OmegaTextOnBrand
             )
             Spacer(Modifier.height(4.dp))
-            Text(account.masked, fontSize = 13.sp, color = Color.White.copy(alpha = 0.65f))
+            Text(account.masked, style = OmegaType.BodyTightM, color = OmegaTextOnBrand.copy(alpha = 0.65f))
         }
     }
 }
@@ -358,17 +371,21 @@ private fun formatRub(amount: Double): String =
 
 // ─── ПЛАТЕЖИ ────────────────────────────────────────────────────────────────
 
-private data class PayCategory(val label: String, val icon: ImageVector, val topup: Boolean = false)
+private data class PayCategory(
+    val label: String,
+    val iconRes: Int,
+    val topup: Boolean = false
+)
 
 @Composable
 fun PaymentsTab(context: Context) {
     val categories = listOf(
-        PayCategory("ЖКХ",       Icons.Default.Home),
-        PayCategory("Телефон",   Icons.Default.Phone, topup = true),
-        PayCategory("Интернет",  Icons.Default.Wifi),
-        PayCategory("Транспорт", Icons.Default.DirectionsBus),
-        PayCategory("Штрафы",    Icons.Default.Warning),
-        PayCategory("Ещё",       Icons.Default.MoreHoriz),
+        PayCategory("ЖКХ",       R.drawable.ic_home),
+        PayCategory("Телефон",   R.drawable.ic_phone, topup = true),
+        PayCategory("Интернет",  R.drawable.ic_globe),
+        PayCategory("Транспорт", R.drawable.ic_bus),
+        PayCategory("Штрафы",    R.drawable.ic_shield_fingerprint),
+        PayCategory("Ещё",       R.drawable.ic_magnifier),
     )
 
     LazyColumn(
@@ -379,9 +396,9 @@ fun PaymentsTab(context: Context) {
         item {
             Text(
                 "Платежи",
-                fontSize = 20.sp,
+                style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
-                color = VtbOnSurface
+                color = OmegaTextPrimary
             )
         }
         item {
@@ -418,7 +435,7 @@ private fun PayCategoryCell(category: PayCategory, modifier: Modifier = Modifier
     Card(
         modifier = modifier.clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Column(
@@ -431,32 +448,37 @@ private fun PayCategoryCell(category: PayCategory, modifier: Modifier = Modifier
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(VtbBluePale, CircleShape),
+                    .background(OmegaChip, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    category.icon,
+                    painter = painterResource(category.iconRes),
                     contentDescription = null,
-                    tint = VtbBlue,
+                    tint = OmegaBrandPrimary,
                     modifier = Modifier.size(22.dp)
                 )
             }
-            Text(category.label, fontSize = 12.sp, color = VtbOnSurface, fontWeight = FontWeight.Medium)
+            Text(category.label, style = OmegaType.BodyTightM, color = OmegaTextPrimary, fontWeight = FontWeight.Medium)
         }
     }
 }
 
 // ─── ПРОДУКТЫ ───────────────────────────────────────────────────────────────
 
-private data class BankProduct(val name: String, val subtitle: String, val icon: ImageVector, val color: Color)
+private data class BankProduct(
+    val name: String,
+    val subtitle: String,
+    val iconRes: Int,
+    val color: Color
+)
 
 @Composable
 fun ProductsTab(context: Context) {
     val products = listOf(
-        BankProduct("Дебетовая карта",     "****5678 · 47 230 ₽",        Icons.Default.CreditCard,  VtbBlue),
-        BankProduct("Кредитная карта",     "Лимит 50 000 ₽ · ****9012",  Icons.Default.Payment,     Color(0xFFE65100)),
-        BankProduct("Накопительный счёт",  "6% годовых · 120 000 ₽",     Icons.Default.Savings,     VtbGreen),
-        BankProduct("Инвестиции",          "Откройте брокерский счёт",    Icons.Default.TrendingUp,  Color(0xFF6A1B9A)),
+        BankProduct("Дебетовая карта",     "****5678 · 47 230 ₽",        R.drawable.ic_card_arrow_right, OmegaBrandPrimary),
+        BankProduct("Кредитная карта",     "Лимит 50 000 ₽ · ****9012",  R.drawable.ic_card_line,        OmegaWarning),
+        BankProduct("Накопительный счёт",  "6% годовых · 120 000 ₽",     R.drawable.ic_wallet,           OmegaSuccess),
+        BankProduct("Инвестиции",          "Откройте брокерский счёт",    R.drawable.ic_chart_zigzag,     GalaxyPurple.v500),
     )
 
     LazyColumn(
@@ -467,16 +489,16 @@ fun ProductsTab(context: Context) {
         item {
             Text(
                 "Продукты",
-                fontSize = 20.sp,
+                style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
-                color = VtbOnSurface
+                color = OmegaTextPrimary
             )
         }
         items(products) { product ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Row(
@@ -490,7 +512,7 @@ fun ProductsTab(context: Context) {
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            product.icon,
+                            painter = painterResource(product.iconRes),
                             contentDescription = null,
                             tint = product.color,
                             modifier = Modifier.size(22.dp)
@@ -498,15 +520,15 @@ fun ProductsTab(context: Context) {
                     }
                     Spacer(Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(product.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = VtbOnSurface)
-                        Text(product.subtitle, fontSize = 12.sp, color = VtbSecondary)
+                        Text(product.name, style = OmegaType.BodyTightL, fontWeight = FontWeight.SemiBold, color = OmegaTextPrimary)
+                        Text(product.subtitle, style = OmegaType.BodyTightM, color = OmegaTextSecondary)
                     }
                     TextButton(
                         onClick = {
                             Toast.makeText(context, "Недоступно в демо-режиме", Toast.LENGTH_SHORT).show()
                         }
                     ) {
-                        Text("Подробнее", fontSize = 12.sp, color = VtbBlue)
+                        Text("Подробнее", style = OmegaType.BodyTightM, color = OmegaBrandPrimary)
                     }
                 }
             }
@@ -521,20 +543,20 @@ private data class TxItem(
     val subtitle: String,
     val amount: String,
     val income: Boolean,
-    val icon: ImageVector
+    val iconRes: Int
 )
 
 @Composable
 fun HistoryTab() {
     val transactions = listOf(
-        TxItem("Мария К.",     "Перевод · 3 апр",    "−1 500 ₽",   false, Icons.AutoMirrored.Filled.Send),
-        TxItem("Зачисление",   "Зарплата · 2 апр",   "+50 000 ₽",  true,  Icons.Default.AccountBalance),
-        TxItem("МТС",          "Телефон · 1 апр",    "−300 ₽",     false, Icons.Default.Phone),
-        TxItem("Яна С.",       "Перевод · 31 мар",   "−2 000 ₽",   false, Icons.AutoMirrored.Filled.Send),
-        TxItem("Пятёрочка",    "Покупка · 30 мар",   "−847 ₽",     false, Icons.Default.ShoppingCart),
-        TxItem("Кэшбэк",       "Возврат · 30 мар",   "+42 ₽",      true,  Icons.Default.Refresh),
-        TxItem("Денис В.",     "Перевод · 29 мар",   "+5 000 ₽",   true,  Icons.Default.AccountBalance),
-        TxItem("ЖД Билеты",    "Покупка · 28 мар",   "−3 200 ₽",   false, Icons.Default.Train),
+        TxItem("Мария К.",     "Перевод · 3 апр",    "−1 500 ₽",   false, R.drawable.ic_vtb_arrow_right),
+        TxItem("Зачисление",   "Зарплата · 2 апр",   "+50 000 ₽",  true,  R.drawable.ic_card_line),
+        TxItem("МТС",          "Телефон · 1 апр",    "−300 ₽",     false, R.drawable.ic_phone),
+        TxItem("Яна С.",       "Перевод · 31 мар",   "−2 000 ₽",   false, R.drawable.ic_vtb_arrow_right),
+        TxItem("Пятёрочка",    "Покупка · 30 мар",   "−847 ₽",     false, R.drawable.ic_cart),
+        TxItem("Кэшбэк",       "Возврат · 30 мар",   "+42 ₽",      true,  R.drawable.ic_repeat),
+        TxItem("Денис В.",     "Перевод · 29 мар",   "+5 000 ₽",   true,  R.drawable.ic_card_line),
+        TxItem("ЖД Билеты",    "Покупка · 28 мар",   "−3 200 ₽",   false, R.drawable.ic_train),
     )
 
     LazyColumn(
@@ -545,41 +567,41 @@ fun HistoryTab() {
         item {
             Text(
                 "История операций",
-                fontSize = 20.sp,
+                style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
-                color = VtbOnSurface
+                color = OmegaTextPrimary
             )
         }
         items(transactions) { tx ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val iconColor = if (tx.income) VtbGreen else VtbSecondary
+                    val iconColor = if (tx.income) OmegaSuccess else OmegaTextSecondary
                     Box(
                         modifier = Modifier
                             .size(40.dp)
                             .background(iconColor.copy(alpha = 0.12f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(tx.icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
+                        Icon(painter = painterResource(tx.iconRes), contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(tx.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = VtbOnSurface)
-                        Text(tx.subtitle, fontSize = 12.sp, color = VtbSecondary)
+                        Text(tx.title, style = OmegaType.BodyTightL, fontWeight = FontWeight.Medium, color = OmegaTextPrimary)
+                        Text(tx.subtitle, style = OmegaType.BodyTightM, color = OmegaTextSecondary)
                     }
                     Text(
                         tx.amount,
-                        fontSize = 14.sp,
+                        style = OmegaType.BodyTightL,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (tx.income) VtbGreen else VtbOnSurface
+                        color = if (tx.income) OmegaSuccess else OmegaTextPrimary
                     )
                 }
             }
@@ -610,19 +632,18 @@ fun ChatTab() {
             item {
                 Text(
                     "Чат поддержки",
-                    fontSize = 20.sp,
+                    style = OmegaType.HeadlineL,
                     fontWeight = FontWeight.Bold,
-                    color = VtbOnSurface
+                    color = OmegaTextPrimary
                 )
             }
             items(messages) { msg -> ChatBubble(msg) }
         }
 
-        // Disabled input bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color.White)
+                .background(OmegaSurfaceAlt)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -630,12 +651,12 @@ fun ChatTab() {
                 value = "",
                 onValueChange = {},
                 enabled = false,
-                placeholder = { Text("Чат недоступен в демо-режиме", fontSize = 13.sp) },
+                placeholder = { Text("Чат недоступен в демо-режиме", style = OmegaType.BodyTightM) },
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    disabledBorderColor = VtbDivider,
-                    disabledPlaceholderColor = VtbSecondary
+                    disabledBorderColor = OmegaChip,
+                    disabledPlaceholderColor = OmegaTextSecondary
                 )
             )
         }
@@ -651,8 +672,8 @@ private fun ChatBubble(msg: ChatMsg) {
         if (msg.fromBot) {
             Text(
                 "ВТБ",
-                fontSize = 10.sp,
-                color = VtbSecondary,
+                style = OmegaType.BodyTightS,
+                color = OmegaTextSecondary,
                 modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
             )
         }
@@ -664,15 +685,15 @@ private fun ChatBubble(msg: ChatMsg) {
                 bottomEnd = 16.dp
             ),
             colors = CardDefaults.cardColors(
-                containerColor = if (msg.fromBot) Color.White else VtbBlue
+                containerColor = if (msg.fromBot) OmegaSurfaceAlt else OmegaBrandPrimary
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = if (msg.fromBot) 1.dp else 0.dp),
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Text(
                 msg.text,
-                fontSize = 14.sp,
-                color = if (msg.fromBot) VtbOnSurface else Color.White,
+                style = OmegaType.BodyParagraphM,
+                color = if (msg.fromBot) OmegaTextPrimary else OmegaTextOnBrand,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
             )
         }

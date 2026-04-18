@@ -17,6 +17,13 @@
 - `commit` — коммит с обновлением документации (`/commit`)
 - `plan` — планирование реализации перед нетривиальными задачами (`/plan`)
 - `deploy` — деплой сервера (tgdom-server) и установка APK через adb
+- `figma` — работа с дизайн-системой Omega (ВТБ) через Framelink MCP (цвета, токены, компоненты)
+
+**Дизайн-система Omega (Figma):**
+- Навигация по файлам: `docs/FIGMA.md`
+- Доступ через Framelink MCP (`opencode.json`), токен в `.env` (`FIGMA_API_KEY`)
+- 9 проектов: palette, tokens, guidelines, base-components, atoms, meta, templates, illustrations, cookbook
+- При разработке UI — всегда сверяйся с Figma, не угадывай значения
 
 ---
 

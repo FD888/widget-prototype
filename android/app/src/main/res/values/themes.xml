@@ -1,18 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Base app theme (used by MainActivity, InputActivity) -->
-    <style name="Theme.VTBVita" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Base app theme — тёмная тема ВТБ (Material3 Dark) -->
+    <style name="Theme.VTBVita" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/dark_bg</item>
+        <item name="android:statusBarColor">@color/dark_bg</item>
+        <item name="android:navigationBarColor">@color/dark_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
 
     <!--
-        Transparent overlay theme for BottomSheet-style activities.
-        The Compose content draws its own dim backdrop.
+        Transparent overlay theme для BottomSheet-style активностей.
+        Compose-контент рисует собственный dim-backdrop.
     -->
-    <style name="Theme.VTBVita.BottomSheet" parent="android:Theme.Material.Light.NoActionBar">
+    <style name="Theme.VTBVita.BottomSheet" parent="Theme.Material3.Dark.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
 </resources>

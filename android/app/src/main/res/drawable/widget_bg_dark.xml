@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    VTB Vita Widget Background — тёмный вариант
+    Используется как альтернатива для светлых обоев
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="32dp" />
+    <solid android:color="@color/dark_surface" />
+</shape>

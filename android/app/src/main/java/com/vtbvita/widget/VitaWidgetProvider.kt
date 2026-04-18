@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
+import com.vtbvita.widget.ui.effects.AuroraRenderer
 import timber.log.Timber
 
 class VitaWidgetProvider : AppWidgetProvider() {
@@ -30,6 +31,9 @@ class VitaWidgetProvider : AppWidgetProvider() {
 
         fun defaultViews(context: Context): RemoteViews =
             RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                // Сброс фона капсулы на статичный градиент (остановка aurora-анимации)
+                setImageViewResource(R.id.capsule_bg, R.drawable.widget_bg)
+                setViewVisibility(R.id.capsule_bg, View.VISIBLE)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 // IDLE visible
                 setViewVisibility(R.id.tv_prompt, View.VISIBLE)
@@ -49,6 +53,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
                     setTextViewText(R.id.tv_prompt, prompt)
                     setFloat(R.id.tv_prompt, "setAlpha", 0.80f)
                     setFloat(R.id.capsule, "setAlpha", 1.0f)
+                    setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                     setViewVisibility(R.id.btn_mic, View.VISIBLE)
                     setOnClickPendingIntent(R.id.tv_prompt, textInputPi(context))
                     setOnClickPendingIntent(R.id.btn_mic, voiceStartPi(context))
@@ -56,6 +61,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
                     setTextViewText(R.id.tv_prompt, "Войдите в приложение")
                     setFloat(R.id.tv_prompt, "setAlpha", 0.75f)
                     setFloat(R.id.capsule, "setAlpha", 0.7f)
+                    setFloat(R.id.capsule_bg, "setAlpha", 0.7f)
                     setViewVisibility(R.id.btn_mic, View.GONE)
                     setOnClickPendingIntent(R.id.tv_prompt, mainPi(context))
                 }
@@ -65,6 +71,9 @@ class VitaWidgetProvider : AppWidgetProvider() {
         fun showPreparing(context: Context) {
             Timber.d("widget → PREPARING")
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                setImageViewResource(R.id.capsule_bg, R.drawable.widget_bg)
+                setViewVisibility(R.id.capsule_bg, View.VISIBLE)
+                setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
                 setViewVisibility(R.id.tv_status, View.GONE)
@@ -90,6 +99,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
         fun showRecording(context: Context, partialText: String) {
             Timber.d("widget → RECORDING")
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                setViewVisibility(R.id.capsule_bg, View.VISIBLE)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
                 setViewVisibility(R.id.tv_status, View.GONE)
@@ -125,6 +135,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
         fun hideWidget(context: Context) {
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setViewVisibility(R.id.capsule, View.INVISIBLE)
+                setViewVisibility(R.id.capsule_bg, View.INVISIBLE)
             }
             updateAll(context, views)
         }
@@ -133,6 +144,9 @@ class VitaWidgetProvider : AppWidgetProvider() {
         fun showStatus(context: Context, text: String) {
             Timber.i("widget → STATUS: %s", text)
             val statusViews = RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                setImageViewResource(R.id.capsule_bg, R.drawable.widget_bg)
+                setViewVisibility(R.id.capsule_bg, View.VISIBLE)
+                setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
                 setViewVisibility(R.id.btn_mic, View.GONE)

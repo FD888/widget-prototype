@@ -8,28 +8,31 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ExitToApp
-import androidx.compose.material.icons.filled.Fingerprint
+
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import com.vtbvita.widget.R
 import com.vtbvita.widget.api.BankingTokenResult
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.VtbBlue
-import com.vtbvita.widget.ui.theme.VtbBlueMid
+import com.vtbvita.widget.ui.theme.OmegaBrandGradient
+import com.vtbvita.widget.ui.theme.OmegaChip
+import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaTextDisabled
+import com.vtbvita.widget.ui.theme.OmegaTextHint
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -94,7 +97,6 @@ fun PinEntryScreen(
     val biometricEnabled = remember { SessionManager.isBiometricEnabled(context) }
     val showBiometric = biometricEnabled && activity != null
 
-    // Вспомогательная функция — биометрия прошла, получаем токен
     fun loginWithBiometric() {
         if (isLoading) return
         isLoading = true
@@ -111,10 +113,9 @@ fun PinEntryScreen(
         }
     }
 
-    // Автозапуск биометрического промпта при открытии экрана
     LaunchedEffect(Unit) {
         if (showBiometric) {
-            delay(300) // даём время отрисоваться
+            delay(300)
             BiometricHelper.authenticate(
                 activity = activity!!,
                 onSuccess = { loginWithBiometric() }
@@ -152,7 +153,7 @@ fun PinEntryScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF001A5E), VtbBlue, VtbBlueMid)))
+            .background(OmegaBrandGradient)
     ) {
         Column(
             modifier = Modifier
@@ -160,7 +161,6 @@ fun PinEntryScreen(
                 .systemBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Навигация: кнопка «Назад» слева, «Выйти» справа
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -169,9 +169,9 @@ fun PinEntryScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
+                    painter = painterResource(R.drawable.ic_arrow_up),
                     contentDescription = "Назад",
-                    tint = Color.White,
+                    tint = OmegaTextPrimary,
                     modifier = Modifier
                         .size(28.dp)
                         .clickable(onClick = onBack)
@@ -179,14 +179,14 @@ fun PinEntryScreen(
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                        .background(OmegaChip, CircleShape)
                         .clickable(onClick = onLogout),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.AutoMirrored.Filled.ExitToApp,
+                        painter = painterResource(R.drawable.ic_exit),
                         contentDescription = "Выйти",
-                        tint = Color.White,
+                        tint = OmegaTextPrimary,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -194,18 +194,17 @@ fun PinEntryScreen(
 
             Spacer(Modifier.height(40.dp))
 
-            // Аватар
             Box(
                 modifier = Modifier
                     .size(72.dp)
-                    .background(Color.White.copy(alpha = 0.2f), CircleShape),
+                    .background(OmegaChip, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     persona.name.first().toString(),
                     fontSize = 30.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = OmegaTextPrimary
                 )
             }
 
@@ -215,12 +214,12 @@ fun PinEntryScreen(
                 persona.name,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White
+                color = OmegaTextPrimary
             )
             Text(
                 persona.role,
                 fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.6f)
+                color = OmegaTextSecondary
             )
 
             Spacer(Modifier.height(40.dp))
@@ -228,19 +227,18 @@ fun PinEntryScreen(
             Text(
                 "Введите PIN",
                 fontSize = 15.sp,
-                color = Color.White.copy(alpha = 0.8f)
+                color = OmegaTextSecondary
             )
 
             Spacer(Modifier.height(20.dp))
 
-            // 4 точки
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 repeat(4) { i ->
                     val filled = i < pin.length
                     val color = when {
-                        errorMsg.isNotBlank() -> Color(0xFFE57373)
-                        filled -> Color.White
-                        else -> Color.White.copy(alpha = 0.3f)
+                        errorMsg.isNotBlank() -> OmegaError
+                        filled -> OmegaTextPrimary
+                        else -> OmegaTextHint
                     }
                     Box(
                         modifier = Modifier
@@ -253,12 +251,11 @@ fun PinEntryScreen(
             Spacer(Modifier.height(12.dp))
 
             if (errorMsg.isNotBlank()) {
-                Text(errorMsg, fontSize = 13.sp, color = Color(0xFFE57373))
+                Text(errorMsg, fontSize = 13.sp, color = OmegaError)
             }
 
             Spacer(Modifier.height(40.dp))
 
-            // Цифровой пад
             val keys = listOf(
                 listOf("1", "2", "3"),
                 listOf("4", "5", "6"),
@@ -284,13 +281,12 @@ fun PinEntryScreen(
                 Spacer(Modifier.height(16.dp))
             }
 
-            // Кнопка биометрии (если включена и доступна)
             if (showBiometric) {
                 Spacer(Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                        .background(OmegaChip, CircleShape)
                         .clickable(enabled = !isLoading) {
                             BiometricHelper.authenticate(
                                 activity = activity!!,
@@ -300,9 +296,9 @@ fun PinEntryScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Default.Fingerprint,
+                        painter = painterResource(R.drawable.ic_fingerprint),
                         contentDescription = "Войти по биометрии",
-                        tint = Color.White,
+                        tint = OmegaTextPrimary,
                         modifier = Modifier.size(28.dp)
                     )
                 }
@@ -310,22 +306,21 @@ fun PinEntryScreen(
                 Text(
                     "Биометрия",
                     fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.55f)
+                    color = OmegaTextHint
                 )
             }
 
             Spacer(Modifier.weight(1f))
 
-            // Подсказка PIN (демо)
             Box(
                 modifier = Modifier
-                    .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                    .background(OmegaSurface, RoundedCornerShape(8.dp))
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
                     "Подсказка: PIN = ${persona.pin}",
                     fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.55f)
+                    color = OmegaTextHint
                 )
             }
 
@@ -345,7 +340,7 @@ fun PinKey(
         modifier = Modifier
             .size(size)
             .background(
-                Color.White.copy(alpha = if (enabled) 0.12f else 0.06f),
+                if (enabled) OmegaChip else OmegaSurface,
                 CircleShape
             )
             .clickable(enabled = enabled, onClick = onClick),
@@ -355,7 +350,7 @@ fun PinKey(
             label,
             fontSize = if (label == "⌫") 22.sp else 26.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.White.copy(alpha = if (enabled) 1f else 0.4f)
+            color = if (enabled) OmegaTextPrimary else OmegaTextDisabled
         )
     }
 }

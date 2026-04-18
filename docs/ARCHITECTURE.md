@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-12 (security hardening)*
+*Последнее обновление: 2026-04-18 (Omega дизайн-система миграция)*
 
 ### Структура репозитория
 
@@ -31,19 +31,35 @@ widget-prototype/
 │       │   ├── MockBankActivity.kt         ← mock банковское приложение
 │       │   ├── BankingSession.kt           ← in-memory banking JWT (15 мин)
 │       │   ├── PhoneVerificationActivity.kt← верификация номера телефона
-│       │   ├── TransferFlowActivity.kt         ← единый модал NLP-флоу: disambiguation + подтверждение (Compose-навигация)
+│       │   ├── TransferFlowActivity.kt         ← единый модал NLP-флоу: disambiguation + подтверждение
 │       │   ├── ContactDisambiguationActivity.kt ← legacy (заменён TransferFlowActivity для NLP-пути)
 │       │   ├── api/MockApiService.kt       ← HTTP-клиент к FastAPI
 │       │   ├── VoiceStreamingRecorder.kt   ← WebSocket PCM-стриминг на сервер (16kHz/16-bit)
 │       │   ├── VoiceRecordingService.kt    ← Foreground Service: запись голоса + анимация колец в виджете
-│       │   ├── nlp/NlpService.kt           ← HTTP-клиент к /parse (object, не interface)
+│       │   ├── nlp/NlpService.kt           ← HTTP-клиент к /parse
 │       │   ├── nlp/ContactMatcher.kt       ← нечёткий поиск по ContactsContract (склонения)
 │       │   ├── nlp/ContactMemory.kt        ← SharedPreferences: история выборов → boost score
 │       │   ├── BiometricHelper.kt          ← реальный BiometricPrompt (только BIOMETRIC_STRONG)
 │       │   ├── model/Models.kt             ← data-классы
-│       │   ├── ui/theme/                   ← VTB-цвета, типографика
-│       │   ├── ui/components/VitaComponents.kt ← shared UI компоненты
-│       │   └── ui/components/TransferDetailsContent.kt ← shared Composable для формы перевода
+│       │   ├── ui/theme/
+│       │   │   ├── OmegaColor.kt          ← палитра Omega (16 шкал + семантические токены)
+│       │   │   ├── OmegaType.kt           ← типографика Omega (tight/paragraph, HeadlineXS/XXS)
+│       │   │   ├── OmegaDimensions.kt     ← spacing, radius, elevation, stroke, size
+│       │   │   ├── Theme.kt               ← VTBVitaTheme (OMEgaDarkColorScheme)
+│       │   │   └── Color.kt / Type.kt     ← УДАЛЕНЫ (миграция завершена)
+│       │   ├── ui/components/
+│       │   │   ├── OmegaComponents.kt      ← Omega UI компоненты (Button, SheetHeader, InfoCard и т.д.)
+│       │   │   ├── TransferDetailsContent.kt ← shared Composable для формы перевода
+│       │   │   └── VitaComponents.kt       ← УДАЛЕН (миграция завершена)
+│       │   └── ui/effects/
+│       │       └── AuroraEffect.kt        ← AGSL-шейдер (не Omega)
+│       ├── res/
+│       │   ├── layout/widget_vita.xml
+│       │   ├── drawable/ic_*.xml          ← 23 Omega-иконки из Figma
+│       │   ├── drawable/bank_*.png         ← логотипы банков
+│       │   ├── font/vtb_*.ttf              ← VTB-шрифты
+│       │   └── xml/vita_widget_info.xml
+│       └── AndroidManifest.xml
 │       ├── res/
 │       │   ├── layout/widget_vita.xml      ← RemoteViews-макет виджета
 │       │   ├── drawable/widget_bg.xml      ← синий градиент, cornerRadius 32dp
@@ -106,7 +122,11 @@ widget-prototype/
 | In-memory banking JWT | `BankingSession.kt` | ✅ |
 | Inline PIN overlay (виджет) | `InputActivity.kt` | ✅ |
 | Биометрическая аутентификация (BiometricPrompt) | `BiometricHelper.kt` | ✅ |
-| Shared UI компоненты | `ui/components/VitaComponents.kt` | ✅ |
+| Shared UI компоненты (Omega Design System) | `ui/components/OmegaComponents.kt` | ✅ |
+| Omega типографика (tight/paragraph, HeadlineXS/XXS) | `ui/theme/OmegaType.kt` | ✅ |
+| Omega палитра (16 шкал + семантика) | `ui/theme/OmegaColor.kt` | ✅ |
+| Omega dimensions (spacing, radius, elevation) | `ui/theme/OmegaDimensions.kt` | ✅ |
+| 23 Omega-иконки из Figma (SVG → VectorDrawable) | `res/drawable/ic_*.xml` | ✅ |
 | Сессия (login/logout) | `SessionManager.kt` | ✅ |
 | Выбор профиля | `MainActivity.kt` | ✅ |
 | PIN-вход | `PinEntryActivity.kt` | ✅ |
@@ -154,6 +174,9 @@ widget-prototype/
 | 2026-04-12 | CORS ограничен до CORS_ORIGINS env (дефолт: vtb.vibefounder.ru); методы: GET/POST | Было allow_origins=["*"] |
 | 2026-04-12 | APP_API_KEY и JWT_SECRET: убраны fallback-значения, fail-fast при старте если env не задан | Hardcoded секреты не должны попадать в репо |
 | 2026-04-12 | NLP: добавлен «заплати/заплатить» в _TRANSFER_VERBS | Частое разговорное слово; покрыто регрессионными тестами |
+| 2026-04-18 | Миграция UI на дизайн-систему Omega (ВТБ): OmegaColor, OmegaType, OmegaDimensions, OmegaComponents | Замена хардкод-цветов/VtbBlue/AccentGreen на семантические токены; tight/paragraph типографика; Material Icons → Omega-иконки из Figma; удалены Color.kt, Type.kt, VitaComponents.kt |
+| 2026-04-18 | Tight vs Paragraph body-стили: BodyTight* для меток/чипов, BodyParagraph* для многострочного текста | Figma `03-omg-typography` разделяет body на tight/paragraph; Material3 bodyLarge/Medium/Small маппятся на Paragraph |
+| 2026-04-18 | Omega Medium (500) маппится на SemiBold (600) — отсутствующий шрифт weight | VTB Group UI не содержит weight 500; созданы отдельные алиасы BodyTightMedium*/BodyParagraphMedium* для будущей миграции |
 
 ---
 

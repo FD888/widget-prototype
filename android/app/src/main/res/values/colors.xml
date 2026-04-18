@@ -1,9 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Base -->
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="vtb_blue">#003B8E</color>
-    <color name="vtb_blue_dark">#002B6B</color>
-    <color name="vtb_blue_light">#1565C0</color>
-    <color name="vtb_surface">#F5F7FA</color>
+
+    <!-- VTB Dark Theme — основные поверхности -->
+    <color name="dark_bg">#FF0D0D0D</color>
+    <color name="dark_surface">#FF1A1A1A</color>
+    <color name="dark_surface_alt">#FF222222</color>
+    <color name="dark_chip">#FF2A2A2A</color>
+
+    <!-- VTB Dark Theme — текст -->
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FF8A8A8A</color>
+    <color name="text_hint">#FF5C5C5C</color>
+
+    <!-- VTB Brand -->
+    <color name="vtb_blue">#FF003B8E</color>
+    <color name="vtb_blue_mid">#FF1565C0</color>
+    <color name="vtb_blue_light">#FF1A56D6</color>
+    <color name="vtb_brand">#FF0061D5</color>
+
+    <!-- Accent -->
+    <color name="accent_blue">#FF4A7FFF</color>
+    <color name="accent_green">#FF34C759</color>
+
+    <!-- Widget gradient — радиальный spotlight ВТБ (яркий центр → тёмный край) -->
+    <color name="widget_gradient_start">#FF7080F0</color>   <!-- яркий синий-фиолетовый: центр пятна -->
+    <color name="widget_gradient_mid">#FF3040C0</color>     <!-- средний тон -->
+    <color name="widget_gradient_end">#FF0F1A7A</color>     <!-- тёмно-синий: края капсулы -->
 </resources>

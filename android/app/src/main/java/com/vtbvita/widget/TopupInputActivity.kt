@@ -13,18 +13,33 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.vtbvita.widget.api.MockApiService
-import com.vtbvita.widget.ui.components.GradientButton
-import com.vtbvita.widget.ui.components.SheetGradientHeader
+import com.vtbvita.widget.ui.components.OmegaAmountChip
+import com.vtbvita.widget.ui.components.OmegaButton
+import com.vtbvita.widget.ui.components.OmegaButtonStyle
+import com.vtbvita.widget.ui.components.OmegaInfoCard
+import com.vtbvita.widget.ui.components.OmegaSheetHeader
+import com.vtbvita.widget.ui.components.OmegaSuccessScreen
+import com.vtbvita.widget.ui.components.OmegaTextField
+import com.vtbvita.widget.ui.components.SuccessAction
+import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaScrim
+import com.vtbvita.widget.ui.theme.OmegaSuccess
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -55,15 +70,35 @@ class TopupInputActivity : ComponentActivity() {
 
         setContent {
             VTBVitaTheme {
-                TopupSheet(
-                    prefillPhone = prefillPhone,
-                    prefillAmount = prefillAmount,
-                    onDismiss = { finish() },
-                    onSuccess = { msg ->
-                        VitaWidgetProvider.showStatus(applicationContext, msg)
-                        finish()
-                    }
-                )
+                var successData by remember {
+                    androidx.compose.runtime.mutableStateOf<Pair<Double, String>?>(null)
+                }
+
+                val success = successData
+                if (success != null) {
+                    OmegaSuccessScreen(
+                        title = "Пополнение выполнено",
+                        subtitle = "Мобильная связь · $prefillPhone".trimEnd(' ', '·'),
+                        amount = success.first,
+                        actions = listOf(
+                            SuccessAction("🧾", "Получить чек"),
+                            SuccessAction("🔄", "Включить автоплатёж"),
+                        ),
+                        onDone = {
+                            VitaWidgetProvider.showStatus(applicationContext, success.second)
+                            finish()
+                        }
+                    )
+                } else {
+                    TopupSheet(
+                        prefillPhone = prefillPhone,
+                        prefillAmount = prefillAmount,
+                        onDismiss = { finish() },
+                        onSuccess = { amount, msg ->
+                            successData = amount to msg
+                        }
+                    )
+                }
             }
         }
     }
@@ -91,10 +126,11 @@ private fun TopupSheet(
     prefillPhone: String,
     prefillAmount: Double,
     onDismiss: () -> Unit,
-    onSuccess: (String) -> Unit
+    onSuccess: (amount: Double, msg: String) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
     var phone by remember { mutableStateOf(prefillPhone) }
     var amountText by remember {
         mutableStateOf(if (prefillAmount > 0.0) prefillAmount.toLong().toString() else "")
@@ -110,7 +146,7 @@ private fun TopupSheet(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
+            .background(OmegaScrim)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -120,114 +156,135 @@ private fun TopupSheet(
     ) {
         AnimatedVisibility(
             visible = visible,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = tween(durationMillis = 280)
-            ) + fadeIn(animationSpec = tween(200))
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300)) +
+                    fadeIn(animationSpec = tween(220))
         ) {
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(OmegaSurface)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
-                    ) { },
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) { }
             ) {
-                Column {
-                    SheetGradientHeader(title = "Пополнение телефона")
+                OmegaSheetHeader(title = "Мобильная связь")
 
-                    Column(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = phone,
-                            onValueChange = { phone = it },
-                            label = { Text("Номер телефона") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            suffix = if (operator.isNotBlank()) ({ Text(operator) }) else null
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (operator.isNotBlank()) {
+                        OmegaInfoCard(
+                            label = "Оператор",
+                            value = operator
                         )
+                    }
 
-                        OutlinedTextField(
-                            value = amountText,
-                            onValueChange = { v -> amountText = v.filter { it.isDigit() } },
-                            label = { Text("Сумма, ₽") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            suffix = { Text("₽") }
-                        )
+                    OmegaTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = "Номер получателя",
+                        placeholder = "+7 000 000-00-00",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                    )
 
-                        // Быстрые суммы
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("100", "200", "300", "500").forEach { preset ->
-                                FilterChip(
-                                    selected = amountText == preset,
-                                    onClick = { amountText = preset },
-                                    label = { Text("$preset ₽") }
-                                )
-                            }
-                        }
-
-                        error?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall)
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.weight(1f).height(48.dp)
-                            ) { Text("Отмена") }
-
-                            GradientButton(
-                                text = "Пополнить",
-                                isLoading = isLoading,
-                                enabled = !isLoading && phone.isNotBlank() && amountText.isNotBlank(),
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    val amt = amountText.toDoubleOrNull()
-                                    if (amt == null || amt <= 0) { error = "Введите сумму"; return@GradientButton }
-                                    if (phone.isBlank()) { error = "Введите номер"; return@GradientButton }
-                                    isLoading = true; error = null
-                                    scope.launch {
-                                        runCatching {
-                                            MockApiService.command(
-                                                intent = "topup",
-                                                amount = amt,
-                                                recipient = null,
-                                                phone = phone,
-                                                context = context
-                                            )
-                                        }.onSuccess { data ->
-                                            runCatching {
-                                                MockApiService.confirm(
-                                                    transactionId = data.transactionId,
-                                                    sourceAccountId = "debit",
-                                                    selectedBank = null,
-                                                    context = context
-                                                )
-                                            }.onSuccess { result ->
-                                                onSuccess("✓ ${result.message}")
-                                            }.onFailure { e ->
-                                                error = e.message ?: "Ошибка"; isLoading = false
-                                            }
-                                        }.onFailure { e ->
-                                            error = e.message ?: "Ошибка соединения"; isLoading = false
-                                        }
-                                    }
-                                }
+                    OmegaTextField(
+                        value = amountText,
+                        onValueChange = { v -> amountText = v.filter { it.isDigit() } },
+                        label = "Сумма",
+                        placeholder = "0 ₽",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        trailingContent = {
+                            Text(
+                                text = "Комиссия 0 ₽",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = OmegaSuccess,
+                                fontWeight = FontWeight.Medium
                             )
                         }
+                    )
 
-                        Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("100", "300", "500", "1000").forEach { preset ->
+                            OmegaAmountChip(
+                                label = "$preset ₽",
+                                selected = amountText == preset,
+                                onClick = { amountText = preset }
+                            )
+                        }
+                    }
+
+                    error?.let {
+                        Text(it, color = OmegaError, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(OmegaSurface)
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OmegaButton(
+                        text = "Оплатить ₽",
+                        isLoading = isLoading,
+                        enabled = !isLoading && phone.isNotBlank() && amountText.isNotBlank(),
+                        style = OmegaButtonStyle.Brand,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            val amt = amountText.toDoubleOrNull()
+                            if (amt == null || amt <= 0) { error = "Введите сумму"; return@OmegaButton }
+                            if (phone.isBlank()) { error = "Введите номер"; return@OmegaButton }
+                            isLoading = true; error = null
+                            scope.launch {
+                                runCatching {
+                                    MockApiService.command(
+                                        intent = "topup",
+                                        amount = amt,
+                                        recipient = null,
+                                        phone = phone,
+                                        context = context
+                                    )
+                                }.onSuccess { data ->
+                                    runCatching {
+                                        MockApiService.confirm(
+                                            transactionId = data.transactionId,
+                                            sourceAccountId = "debit",
+                                            selectedBank = null,
+                                            context = context
+                                        )
+                                    }.onSuccess { result ->
+                                        onSuccess(amt, "✓ ${result.message}")
+                                    }.onFailure { e ->
+                                        error = e.message ?: "Ошибка"; isLoading = false
+                                    }
+                                }.onFailure { e ->
+                                    error = e.message ?: "Ошибка соединения"; isLoading = false
+                                }
+                            }
+                        }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Отмена",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = OmegaTextSecondary
+                        )
                     }
                 }
             }

@@ -14,25 +14,33 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Search
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vtbvita.widget.R
 import com.vtbvita.widget.nlp.ContactCandidate
 import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.nlp.ContactMemory
+import com.vtbvita.widget.ui.components.OmegaSheetHeader
+import com.vtbvita.widget.ui.components.OmegaTextField
+import com.vtbvita.widget.ui.components.SuccessAction
 import com.vtbvita.widget.ui.components.TransferDetailsSheet
+import com.vtbvita.widget.ui.components.OmegaSuccessScreen
+import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
+import com.vtbvita.widget.ui.theme.OmegaChip
+import com.vtbvita.widget.ui.theme.OmegaScrim
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.VtbBlue
-import com.vtbvita.widget.ui.theme.VtbBluePale
-import com.vtbvita.widget.ui.theme.VtbSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -44,8 +52,6 @@ import kotlinx.coroutines.withContext
  *   ContactSelection → (выбор контакта) → Confirmation
  *   Confirmation     → (back)            → ContactSelection
  *   ContactSelection → (back)            → finish()
- *
- * ContactSelection показывает отфильтрованных топ-кандидатов + inline поиск по всем контактам.
  */
 class TransferFlowActivity : ComponentActivity() {
 
@@ -62,20 +68,20 @@ class TransferFlowActivity : ComponentActivity() {
             val candidates: List<ContactCandidate>,
             val recipientRaw: String
         ) : Screen()
+
+        data class Success(
+            val contact: ContactCandidate,
+            val amount: Double,
+            val statusMsg: String
+        ) : Screen()
     }
 
     companion object {
         private const val EXTRA_AMOUNT = "amount"
         private const val EXTRA_START_CONFIRMED = "start_confirmed"
 
-        /** Кандидаты для disambiguation / back-навигации. Устанавливается перед startActivity. */
         var pendingCandidates: List<ContactCandidate> = emptyList()
         var pendingRecipientRaw: String = ""
-
-        /**
-         * При авторезолве — контакт уже известен, стартуем на экране Confirmation.
-         * pendingCandidates хранит альтернативы для back-навигации.
-         */
         var pendingAutoContact: ContactCandidate? = null
 
         fun newIntentAmbiguous(context: Context, amount: Double? = null): Intent =
@@ -116,11 +122,12 @@ class TransferFlowActivity : ComponentActivity() {
             VTBVitaTheme {
                 var screen by remember { mutableStateOf<Screen>(initialScreen) }
 
-                // Hardware/gesture back
                 BackHandler(enabled = screen is Screen.Confirmation) {
                     val s = screen as Screen.Confirmation
                     screen = Screen.ContactSelection(s.candidates, s.recipientRaw, s.amount)
                 }
+                // На Success-экране back отключён — только кнопка «На главную»
+                BackHandler(enabled = screen is Screen.Success) { /* заблокировано */ }
 
                 when (val s = screen) {
                     is Screen.ContactSelection -> {
@@ -134,7 +141,6 @@ class TransferFlowActivity : ComponentActivity() {
                             onDismiss = { finish() }
                         )
                     }
-
                     is Screen.Confirmation -> {
                         TransferDetailsSheet(
                             recipientName = s.contact.displayName,
@@ -145,7 +151,25 @@ class TransferFlowActivity : ComponentActivity() {
                                 screen = Screen.ContactSelection(s.candidates, s.recipientRaw, s.amount)
                             },
                             onSuccess = { msg ->
-                                VitaWidgetProvider.showStatus(applicationContext, msg)
+                                screen = Screen.Success(
+                                    contact = s.contact,
+                                    amount = s.amount ?: 0.0,
+                                    statusMsg = msg
+                                )
+                            }
+                        )
+                    }
+                    is Screen.Success -> {
+                        OmegaSuccessScreen(
+                            title = "Перевод выполнен",
+                            subtitle = "По номеру телефона · ${s.contact.displayName}",
+                            amount = s.amount,
+                            actions = listOf(
+                                SuccessAction("🧾", "Получить чек"),
+                                SuccessAction("🔁", "Создать шаблон"),
+                            ),
+                            onDone = {
+                                VitaWidgetProvider.showStatus(applicationContext, s.statusMsg)
                                 finish()
                             }
                         )
@@ -178,7 +202,7 @@ private fun ContactSelectionSheet(
             isSearching = false
         } else {
             isSearching = true
-            delay(150) // debounce
+            delay(150)
             searchResults = withContext(Dispatchers.IO) {
                 ContactMatcher.search(searchText, context)
             }
@@ -188,10 +212,11 @@ private fun ContactSelectionSheet(
 
     val displayedCandidates = searchResults ?: candidates
 
+    // Dim overlay
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
+            .background(OmegaScrim)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -199,85 +224,72 @@ private fun ContactSelectionSheet(
             ),
         contentAlignment = Alignment.BottomCenter
     ) {
-        Card(
+        // Sheet
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(OmegaSurface)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
-                ) { },
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) { }
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Handle bar
-                Box(
-                    modifier = Modifier
-                        .padding(top = 12.dp)
-                        .width(40.dp)
-                        .height(4.dp)
-                        .background(
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                            RoundedCornerShape(2.dp)
+            OmegaSheetHeader(title = "Кому переводим?")
+
+            // Поиск
+            OmegaTextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                label = "",
+                placeholder = "Поиск по контактам",
+                modifier = Modifier.padding(horizontal = 16.dp),
+                trailingContent = {
+                    if (isSearching) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = OmegaTextSecondary
                         )
-                        .align(Alignment.CenterHorizontally)
-                )
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_magnifier),
+                            contentDescription = null,
+                            tint = OmegaTextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            )
 
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    "Кому переводим?",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(horizontal = 24.dp)
-                )
-                Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
 
-                // Поиск
-                OutlinedTextField(
-                    value = searchText,
-                    onValueChange = { searchText = it },
-                    placeholder = { Text("Поиск по контактам") },
-                    leadingIcon = {
-                        if (isSearching) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Icon(Icons.Default.Search, contentDescription = null)
-                        }
-                    },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
-                    modifier = Modifier.heightIn(min = 300.dp)
-                ) {
-                    if (displayedCandidates.isEmpty() && searchText.isNotBlank() && !isSearching) {
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                modifier = Modifier.heightIn(min = 280.dp, max = 440.dp)
+            ) {
+                when {
+                    displayedCandidates.isEmpty() && searchText.isNotBlank() && !isSearching -> {
                         item {
                             Text(
                                 "Контакты не найдены",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 16.dp)
+                                color = OmegaTextSecondary,
+                                modifier = Modifier.padding(vertical = 20.dp)
                             )
                         }
-                    } else if (displayedCandidates.isEmpty() && searchText.isBlank()) {
+                    }
+                    displayedCandidates.isEmpty() && searchText.isBlank() -> {
                         item {
                             Text(
-                                "Начните вводить имя для поиска",
+                                "Начните вводить имя",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 16.dp)
+                                color = OmegaTextSecondary,
+                                modifier = Modifier.padding(vertical = 20.dp)
                             )
                         }
-                    } else {
+                    }
+                    else -> {
                         items(displayedCandidates) { candidate ->
                             val picks = if (searchText.isBlank()) {
                                 pickCounts[candidate.phone] ?: 0
@@ -289,11 +301,10 @@ private fun ContactSelectionSheet(
                                 pickCount = picks,
                                 onClick = { onContactSelected(candidate) }
                             )
-                            HorizontalDivider(thickness = 0.5.dp)
                         }
                     }
-                    item { Spacer(Modifier.height(16.dp)) }
                 }
+                item { Spacer(Modifier.height(16.dp)) }
             }
         }
     }
@@ -309,38 +320,48 @@ private fun ContactCandidateRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Аватар-инициалы — тёмный chip стиль ВТБ
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .background(VtbBluePale, CircleShape),
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(OmegaChip),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = candidate.displayName.firstOrNull()?.uppercase() ?: "#",
-                color = VtbBlue,
-                fontWeight = FontWeight.Bold
+                color = OmegaTextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp
             )
         }
+
         Spacer(Modifier.width(12.dp))
-        Column {
+
+        Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(candidate.displayName, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    candidate.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = OmegaTextPrimary,
+                    fontWeight = FontWeight.Medium
+                )
                 if (pickCount > 0) {
                     Spacer(Modifier.width(6.dp))
                     Text(
                         text = if (pickCount >= ContactMemory.AUTO_RESOLVE_AT) "★" else "↑",
                         fontSize = 11.sp,
-                        color = VtbBlue
+                        color = OmegaBrandPrimary
                     )
                 }
             }
             Text(
                 ContactMatcher.maskPhone(candidate.phone),
                 style = MaterialTheme.typography.bodySmall,
-                color = VtbSecondary
+                color = OmegaTextSecondary
             )
         }
     }

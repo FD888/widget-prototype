@@ -16,16 +16,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.AccountInfo
-import com.vtbvita.widget.ui.components.SheetGradientHeader
+import com.vtbvita.widget.ui.components.OmegaSheetHeader
+import com.vtbvita.widget.ui.theme.OmegaBackground
+import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
+import com.vtbvita.widget.ui.theme.OmegaScrim
+import com.vtbvita.widget.ui.theme.OmegaSuccess
+import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaSurfaceAlt
+import com.vtbvita.widget.ui.theme.OmegaType
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.VtbBlue
-import com.vtbvita.widget.ui.theme.VtbGreen
-import com.vtbvita.widget.ui.theme.VtbGreenLight
-import com.vtbvita.widget.ui.theme.VtbSurfaceBg
 import java.util.Locale
 
 class BalanceActivity : ComponentActivity() {
@@ -63,7 +65,7 @@ private fun BalanceBottomSheet(onDismiss: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
+            .background(OmegaScrim)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -86,11 +88,10 @@ private fun BalanceBottomSheet(onDismiss: () -> Unit) {
                         indication = null
                     ) { },
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = OmegaBackground)
             ) {
                 Column {
-                    // Градиентный заголовок
-                    SheetGradientHeader(title = "Счета и балансы")
+                    OmegaSheetHeader(title = "Счета и балансы")
 
                     Column(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
@@ -102,7 +103,7 @@ private fun BalanceBottomSheet(onDismiss: () -> Unit) {
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator(color = VtbBlue)
+                                    CircularProgressIndicator(color = OmegaBrandPrimary)
                                 }
                             }
                             error != null -> {
@@ -132,16 +133,15 @@ private fun BalanceAccountCard(acc: AccountInfo) {
     val isSavings = acc.id.contains("saving", ignoreCase = true) ||
                     acc.name.contains("накоп", ignoreCase = true) ||
                     acc.name.contains("вклад", ignoreCase = true)
-    val accentColor = if (isSavings) VtbGreenLight else VtbBlue
+    val accentColor = if (isSavings) OmegaSuccess else OmegaBrandPrimary
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(VtbSurfaceBg, RoundedCornerShape(14.dp))
+            .background(OmegaSurfaceAlt, RoundedCornerShape(14.dp))
             .padding(0.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Цветная полоска слева
         Box(
             modifier = Modifier
                 .width(4.dp)
@@ -169,8 +169,8 @@ private fun BalanceAccountCard(acc: AccountInfo) {
                 style = MaterialTheme.typography.titleMedium,
                 color = when {
                     acc.balance < 0 -> MaterialTheme.colorScheme.error
-                    isSavings -> VtbGreen
-                    else -> VtbBlue
+                    isSavings -> OmegaSuccess
+                    else -> OmegaBrandPrimary
                 }
             )
         }

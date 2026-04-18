@@ -6,12 +6,20 @@
     android:clipChildren="false"
     android:clipToPadding="false">
 
+    <!-- Фон капсулы: статичный gradient или динамическая aurora bitmap -->
+    <ImageView
+        android:id="@+id/capsule_bg"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_gravity="center_vertical"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_bg" />
+
     <LinearLayout
         android:id="@+id/capsule"
         android:layout_width="match_parent"
         android:layout_height="64dp"
         android:layout_gravity="center_vertical"
-        android:background="@drawable/widget_bg"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:gravity="center_vertical"

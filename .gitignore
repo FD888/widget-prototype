@@ -42,3 +42,8 @@ secrets.properties
 .vscode/
 *.sublime-project
 *.sublime-workspace
+
+.env
+
+.mcp.json
+Скриншоты/

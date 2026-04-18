@@ -16,15 +16,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.vtbvita.widget.ui.theme.OmegaBrandGradientH
 import androidx.compose.ui.unit.sp
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
+import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.OmegaType
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.VtbBlue
-import com.vtbvita.widget.ui.theme.VtbBlueMid
 import timber.log.Timber
 
 data class Persona(
@@ -82,14 +82,12 @@ class MainActivity : ComponentActivity() {
             Timber.plant(Timber.DebugTree())
         }
 
-        // Телефон не верифицирован → экран верификации
         if (!SessionManager.hasAppToken(this)) {
             startActivity(Intent(this, PhoneVerificationActivity::class.java))
             finish()
             return
         }
 
-        // Если persona сохранена — сразу PIN (banking JWT всегда запрашивается заново)
         if (SessionManager.isLoggedIn(this)) {
             val personaId = SessionManager.getPersonaId(this) ?: "vitya"
             startActivity(
@@ -122,7 +120,7 @@ fun ProfileSelectionScreen(onPersonaSelected: (Persona) -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF001A5E), VtbBlue, VtbBlueMid)))
+            .background(OmegaBrandGradientH)
     ) {
         Column(
             modifier = Modifier
@@ -133,18 +131,17 @@ fun ProfileSelectionScreen(onPersonaSelected: (Persona) -> Unit) {
         ) {
             Spacer(Modifier.height(48.dp))
 
-            // Логотип
             Text(
                 "VTB Vita",
-                fontSize = 32.sp,
+                style = OmegaType.DisplayS,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = OmegaTextPrimary,
                 letterSpacing = 1.sp
             )
             Text(
                 "демо-режим",
-                fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.6f),
+                style = OmegaType.BodyTightM,
+                color = OmegaTextSecondary,
                 letterSpacing = 2.sp
             )
 
@@ -152,8 +149,8 @@ fun ProfileSelectionScreen(onPersonaSelected: (Persona) -> Unit) {
 
             Text(
                 "Выберите профиль",
-                fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.8f),
+                style = OmegaType.HeadlineM,
+                color = OmegaTextPrimary.copy(alpha = 0.8f),
                 modifier = Modifier.align(Alignment.Start)
             )
 
@@ -171,8 +168,8 @@ fun ProfileSelectionScreen(onPersonaSelected: (Persona) -> Unit) {
 
             Text(
                 "PIN отображается открыто в целях демонстрации",
-                fontSize = 11.sp,
-                color = Color.White.copy(alpha = 0.4f),
+                style = OmegaType.BodyTightS,
+                color = OmegaTextSecondary.copy(alpha = 0.6f),
                 fontStyle = FontStyle.Italic
             )
             Spacer(Modifier.height(16.dp))
@@ -190,33 +187,32 @@ fun PersonaCard(persona: Persona, onClick: () -> Unit) {
             .alpha(alpha)
             .clickable(enabled = persona.available, onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f)),
+        colors = CardDefaults.cardColors(containerColor = OmegaTextPrimary.copy(alpha = 0.10f)),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            if (persona.available) Color.White.copy(alpha = 0.3f)
-            else Color.White.copy(alpha = 0.15f)
+            if (persona.available) OmegaTextPrimary.copy(alpha = 0.3f)
+            else OmegaTextPrimary.copy(alpha = 0.15f)
         )
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.Top
         ) {
-            // Аватар
             Box(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        if (persona.available) Color.White.copy(alpha = 0.25f)
-                        else Color.White.copy(alpha = 0.10f),
+                        if (persona.available) OmegaTextPrimary.copy(alpha = 0.25f)
+                        else OmegaTextPrimary.copy(alpha = 0.10f),
                         CircleShape
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     persona.name.first().toString(),
-                    fontSize = 20.sp,
+                    style = OmegaType.HeadlineL,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = OmegaTextPrimary
                 )
             }
 
@@ -226,47 +222,45 @@ fun PersonaCard(persona: Persona, onClick: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         persona.name,
-                        fontSize = 17.sp,
+                        style = OmegaType.HeadlineM,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = OmegaTextPrimary
                     )
                     if (!persona.available) {
                         Spacer(Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .background(Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                .background(OmegaTextPrimary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
-                            Text("скоро", fontSize = 10.sp, color = Color.White.copy(alpha = 0.7f))
+                            Text("скоро", style = OmegaType.BodyTightS, color = OmegaTextSecondary)
                         }
                     }
                 }
                 Text(
                     persona.role,
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.65f)
+                    style = OmegaType.BodyTightM,
+                    color = OmegaTextSecondary.copy(alpha = 0.8f)
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     persona.description,
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.8f),
-                    lineHeight = 17.sp
+                    style = OmegaType.BodyParagraphM,
+                    color = OmegaTextPrimary.copy(alpha = 0.8f)
                 )
                 Spacer(Modifier.height(10.dp))
 
-                // PIN-бейдж
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                            .border(1.dp, OmegaTextPrimary.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
                             "PIN: ${persona.pin}",
-                            fontSize = 13.sp,
+                            style = OmegaType.BodyTightM,
                             fontWeight = FontWeight.Medium,
-                            color = Color.White,
+                            color = OmegaTextPrimary,
                             letterSpacing = 1.5.sp
                         )
                     }
@@ -274,8 +268,8 @@ fun PersonaCard(persona: Persona, onClick: () -> Unit) {
                         Spacer(Modifier.weight(1f))
                         Text(
                             "Войти →",
-                            fontSize = 13.sp,
-                            color = Color.White.copy(alpha = 0.8f),
+                            style = OmegaType.BodyTightM,
+                            color = OmegaTextPrimary.copy(alpha = 0.8f),
                             fontWeight = FontWeight.Medium
                         )
                     }

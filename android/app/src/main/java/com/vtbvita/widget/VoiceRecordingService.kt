@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
 import android.widget.RemoteViews
+import com.vtbvita.widget.ui.effects.AuroraRenderer
 import timber.log.Timber
 import androidx.core.app.NotificationCompat
 import com.vtbvita.widget.nlp.ContactMatcher
@@ -283,21 +284,31 @@ class VoiceRecordingService : Service() {
     private fun startAnimation() {
         stopAnimation()
         animJob = scope.launch {
-            val awm = AppWidgetManager.getInstance(this@VoiceRecordingService)
-            val cn  = ComponentName(this@VoiceRecordingService, VitaWidgetProvider::class.java)
+            val awm     = AppWidgetManager.getInstance(this@VoiceRecordingService)
+            val cn      = ComponentName(this@VoiceRecordingService, VitaWidgetProvider::class.java)
+            val density = resources.displayMetrics.density
+
+            // Размер bitmap для aurora: фиксированное разрешение (достаточно для мягкого эффекта)
+            val bitmapW = 400
+            val bitmapH = 80
+            // Радиус скругления в пикселях пропорционально реальному dp (32dp)
+            val cornerPx = 32f * density * (bitmapH.toFloat() / (64f * density))
+
+            val animStart = SystemClock.uptimeMillis()
+            var frameCount = 0
 
             while (isActive) {
                 val now = SystemClock.uptimeMillis()
-                val amp = (recorder?.amplitude ?: 0.08f).coerceIn(0.3f, 1f)
+                val amp = (recorder?.amplitude ?: 0.08f).coerceIn(0.08f, 1f)
 
                 val partial = RemoteViews(packageName, R.layout.widget_vita)
 
+                // ── Кольца (каждый кадр) ─────────────────────────────────────
                 RING_IDS.forEachIndexed { i, id ->
                     val phase = ((now % ANIM_PERIOD_MS).toFloat() / ANIM_PERIOD_MS + i / 3f) % 1f
-                    val base  = phase * amp
+                    val base  = phase * amp.coerceIn(0.3f, 1f)
                     val alpha = (1f - phase) * 0.48f
 
-                    // Органическая форма: медленная синус-модуляция отдельно по X и Y
                     val wobbleX =  0.14f * sin(phase * 2f * PI.toFloat() * 1.3f + i * 1.1f)
                     val wobbleY = -0.10f * sin(phase * 2f * PI.toFloat() * 0.9f + i * 0.7f)
 
@@ -305,6 +316,15 @@ class VoiceRecordingService : Service() {
                     partial.setFloat(id, "setScaleY", (base * (1f + wobbleY)).coerceAtLeast(0f))
                     partial.setFloat(id, "setAlpha",  alpha.coerceIn(0f, 1f))
                 }
+
+                // ── Aurora bitmap (каждые 2 кадра ≈ 160ms, ~6fps) ───────────
+                // Aurora медленная, 6fps достаточно; снижает размер IPC
+                if (frameCount % 2 == 0) {
+                    val timeSec = (now - animStart) / 1000f
+                    val bitmap  = AuroraRenderer.createBitmap(bitmapW, bitmapH, timeSec, amp, cornerPx)
+                    partial.setImageViewBitmap(R.id.capsule_bg, bitmap)
+                }
+                frameCount++
 
                 val ids = awm.getAppWidgetIds(cn)
                 if (ids.isNotEmpty()) {
