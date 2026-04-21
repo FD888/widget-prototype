@@ -9,6 +9,7 @@ Flow (balance):
   Widget → [Biometric/PIN on Android] → GET /balance → показать данные (без confirm)
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header, Depends, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -25,6 +26,7 @@ import json
 import grpc
 import grpc.aio
 from yandex_speech import stt_pb2, stt_pb2_grpc
+import db
 
 load_dotenv()
 
@@ -68,7 +70,15 @@ for _entry in os.getenv("ALLOWED_PINS", "1111:vitya,2222:olga,3333:artyom").spli
         _pin, _uid = _entry.strip().split(":", 1)
         ALLOWED_PINS[_pin.strip()] = _uid.strip()
 
-app = FastAPI(title="VTB Vita Mock API", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await db.init_db()
+    PHONE_INDEX.update(await db.build_phone_index())
+    _log.info("DB ready, phone_index=%d entries", len(PHONE_INDEX))
+    yield
+    await db.close_db()
+
+app = FastAPI(title="VTB Vita Mock API", version="1.0.0", lifespan=lifespan)
 
 _ALLOWED_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 if not _ALLOWED_ORIGINS:
@@ -142,25 +152,24 @@ def _check_app_token(x_api_key: str = Header(..., alias="X-Api-Key")):
         raise HTTPException(status_code=403, detail="Invalid or expired token")
 
 
-def _get_user_from_banking_token(x_banking_token: str = Header(..., alias="X-Banking-Token")) -> str:
+async def _get_user_from_banking_token(x_banking_token: str = Header(..., alias="X-Banking-Token")) -> str:
     """Проверяет X-Banking-Token и возвращает user_id из payload."""
-    from data import USERS as _USERS
     try:
         payload = jwt.decode(x_banking_token, JWT_SECRET, algorithms=["HS256"])
         if payload.get("type") != "banking_access":
             raise HTTPException(status_code=403, detail="Invalid token type")
         user_id = payload.get("user_id")
-        if not user_id or user_id not in _USERS:
+        if not user_id or not await db.get_user(user_id):
             raise HTTPException(status_code=403, detail="Invalid or expired banking token")
         return user_id
     except JWTError:
         raise HTTPException(status_code=403, detail="Invalid or expired banking token")
 
 # ---------------------------------------------------------------------------
-# Data — импорт персон и телефонного индекса из data.py
+# Data — PHONE_INDEX строится из БД при старте, статика остаётся в data.py
 # ---------------------------------------------------------------------------
 
-from data import USERS, PHONE_INDEX, build_phone_index
+PHONE_INDEX: dict = {}
 
 MOCK_OPERATORS = {
     "+7900": "МТС",  "+7901": "МТС",  "+7902": "МТС",  "+7903": "МТС",
@@ -177,10 +186,6 @@ MOCK_OPERATORS = {
     "+7960": "Билайн", "+7962": "Билайн",
     "+7964": "Билайн", "+7965": "Билайн", "+7966": "Билайн",
 }
-
-# Pending operations (in-memory — ok for prototype demo)
-# Структура: txn_id → {intent, amount, display_name, user_id, ...}
-_pending: dict[str, dict] = {}
 
 def _format_phone(phone: str) -> str:
     """Форматирует номер для отображения: +7 (926) 111-22-33"""
@@ -236,6 +241,8 @@ def _accounts_for_response(accounts: list[dict]) -> list[dict]:
             "masked": masked,
             "balance": acc["balance"],
             "type": type_str,
+            "payment_system": acc.get("payment_system", "mir"),
+            "currency": acc.get("currency", "RUB"),
         })
     return result
 
@@ -257,6 +264,8 @@ class AccountInfo(BaseModel):
     masked: str
     balance: float
     type: str
+    payment_system: str = "mir"
+    currency: str = "RUB"
 
 
 class BalanceResponse(BaseModel):
@@ -842,14 +851,14 @@ class BiometricAuthRequest(BaseModel):
     user_id: str = "vitya"  # Android передаёт id выбранной персоны
 
 @app.post("/auth/biometric", response_model=AuthResponse)
-def auth_biometric(req: BiometricAuthRequest, request: Request, _: None = Depends(_check_app_token)):
+async def auth_biometric(req: BiometricAuthRequest, request: Request, _: None = Depends(_check_app_token)):
     _check_rate_limit(f"auth-bio:{_client_ip(request)}", max_requests=20)
     """
     Аутентификация через биометрию — биометрический промпт прошёл на устройстве,
     PIN не нужен. Тело запроса содержит user_id выбранной персоны.
     Требует X-Api-Key (app_token) чтобы только верифицированные устройства могли получить токен.
     """
-    if req.user_id not in USERS:
+    if not await db.get_user(req.user_id):
         raise HTTPException(status_code=403, detail="Unknown user")
     expire = datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRE_MIN)
     token = jwt.encode(
@@ -891,13 +900,13 @@ def verify_phone(req: PhoneVerifyRequest, request: Request):
 
 
 @app.get("/balance", response_model=BalanceResponse)
-def balance(user_id: str = Depends(_get_user_from_banking_token)):
+async def balance(user_id: str = Depends(_get_user_from_banking_token)):
     """
     Возвращает балансы всех счетов пользователя.
     Биометрия/PIN выполняется на стороне Android ДО вызова этого endpoint.
     Никакого confirm не нужно — это чтение, не действие.
     """
-    accounts = USERS[user_id]["accounts"]
+    accounts = await db.get_accounts(user_id)
     return BalanceResponse(
         accounts=_accounts_for_response(accounts),
         timestamp=_now(),
@@ -905,17 +914,15 @@ def balance(user_id: str = Depends(_get_user_from_banking_token)):
 
 
 @app.post("/lookup", response_model=LookupResponse)
-def lookup(req: LookupRequest, _: None = Depends(_check_app_token)):
+async def lookup(req: LookupRequest, _: None = Depends(_check_app_token)):
     """
     Android вызывает при ручном вводе номера в модале перевода.
-    Ищет номер в PHONE_INDEX по всем пользователям.
+    Ищет номер в БД по всем пользователям.
     Полный номер на сервере, клиенту не отдаётся.
     """
     normalized = _normalize_phone(req.phone)
-    entry = PHONE_INDEX.get(normalized)
-    if entry:
-        uid, key = entry
-        contact = USERS[uid]["contacts"][key]
+    contact = await db.get_contact_by_phone(normalized)
+    if contact:
         return LookupResponse(
             found=True,
             display_name=contact["display_name"],
@@ -925,7 +932,7 @@ def lookup(req: LookupRequest, _: None = Depends(_check_app_token)):
 
 
 @app.post("/command", response_model=ConfirmationResponse)
-def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_token)):
+async def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_token)):
     """
     Принимает распарсенный intent transfer или topup.
     Биометрия/PIN выполняется на Android ДО вызова.
@@ -933,8 +940,7 @@ def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_t
     """
     txn_id = _new_txn()
     ts = _now()
-    user_accounts = USERS[user_id]["accounts"]
-    user_contacts = USERS[user_id]["contacts"]
+    user_accounts = await db.get_accounts(user_id)
     accounts = _accounts_for_response(user_accounts)
     default_acc_id = user_accounts[0]["account_id"]
 
@@ -954,7 +960,7 @@ def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_t
 
         if req.recipient:
             key = req.recipient.lower().strip()
-            contact = user_contacts.get(key)
+            contact = await db.get_contact(user_id, key)
             if contact:
                 contact_found = True
                 display_name = contact["display_name"]
@@ -969,7 +975,7 @@ def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_t
                     if entry:
                         contact_found = True
                         uid, ckey = entry
-                        c = USERS[uid]["contacts"][ckey]
+                        c = await db.get_contact(uid, ckey)
                         display_name = c["display_name"]
                         recipient_phone = _format_phone(c["phone"])
                         recipient_banks = c.get("available_banks", [])
@@ -981,13 +987,15 @@ def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_t
                     requires_manual = True
                     display_name = req.recipient  # подсказка в поле
 
-        _pending[txn_id] = {
-            "intent": "transfer",
-            "amount": req.amount,
-            "display_name": display_name,
-            "requires_manual_input": requires_manual,
-            "user_id": user_id,
-        }
+        await db.create_pending(
+            txn_id=txn_id,
+            user_id=user_id,
+            intent="transfer",
+            amount=req.amount,
+            display_name=display_name,
+            phone=None,
+            requires_manual_input=requires_manual,
+        )
 
         return ConfirmationResponse(
             transaction_id=txn_id,
@@ -1017,13 +1025,15 @@ def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_t
         formatted_phone = _format_phone(phone) if phone else None
         operator = _detect_operator(phone) if phone else None
 
-        _pending[txn_id] = {
-            "intent": "topup",
-            "amount": req.amount,
-            "phone": phone,
-            "requires_manual_input": requires_manual,
-            "user_id": user_id,
-        }
+        await db.create_pending(
+            txn_id=txn_id,
+            user_id=user_id,
+            intent="topup",
+            amount=req.amount,
+            display_name=None,
+            phone=phone,
+            requires_manual_input=requires_manual,
+        )
 
         return ConfirmationResponse(
             transaction_id=txn_id,
@@ -1044,38 +1054,47 @@ def command(req: CommandRequest, user_id: str = Depends(_get_user_from_banking_t
 
 
 @app.post("/confirm/{transaction_id}", response_model=OperationResult)
-def confirm(transaction_id: str, req: ConfirmRequest, user_id: str = Depends(_get_user_from_banking_token)):
+async def confirm(transaction_id: str, req: ConfirmRequest, user_id: str = Depends(_get_user_from_banking_token)):
     """
     Пользователь нажал «Подтвердить» в модале.
-    Выполняет операцию, динамически списывает с выбранного счёта.
+    Списывает с выбранного счёта, сохраняет транзакцию в БД.
     """
-    pending = _pending.pop(transaction_id, None)
+    pending = await db.pop_pending(transaction_id)
     if pending is None:
         _log.warning("confirm: txn=%s not found (already executed or expired)", transaction_id)
         raise HTTPException(status_code=404, detail="Операция не найдена или уже выполнена")
 
     ts = _now()
     intent = pending["intent"]
-    # Используем user_id из pending (операция создана этим же пользователем)
     op_user_id = pending.get("user_id", user_id)
-    user_accounts = USERS[op_user_id]["accounts"]
-    source_account = _account_by_id(user_accounts, req.source_account_id)
+    source_account = await db.get_account(op_user_id, req.source_account_id)
+    if source_account is None:
+        source_account = (await db.get_accounts(op_user_id))[0]
     amount = pending.get("amount", 0)
 
     if amount > source_account["balance"]:
         raise HTTPException(status_code=422, detail="Недостаточно средств на выбранном счёте")
 
     balance_after = round(source_account["balance"] - amount, 2)
-    # Динамически обновляем баланс — сохраняется до перезапуска сервера
-    source_account["balance"] = balance_after
+    await db.update_balance(op_user_id, source_account["account_id"], balance_after)
+
+    await db.insert_transaction(
+        txn_id=transaction_id,
+        user_id=op_user_id,
+        account_id=source_account["account_id"],
+        intent=intent,
+        amount=amount,
+        display_name=pending.get("display_name"),
+        phone=pending.get("phone") or req.manual_phone,
+        selected_bank=req.selected_bank,
+    )
 
     _log.info("confirm: user=%s txn=%s intent=%s amount=%.2f account=%s balance_after=%.2f",
-              op_user_id, transaction_id, intent, amount, req.source_account_id, balance_after)
+              op_user_id, transaction_id, intent, amount, source_account["account_id"], balance_after)
 
     bank_label = f" через {req.selected_bank}" if req.selected_bank else ""
 
     if intent == "transfer":
-        # При ручном вводе имя приходит из lookup (Android передаёт его обратно)
         recipient = pending.get("display_name") or req.manual_phone or "Получатель"
         return OperationResult(
             transaction_id=transaction_id,
@@ -1100,6 +1119,34 @@ def confirm(transaction_id: str, req: ConfirmRequest, user_id: str = Depends(_ge
         )
 
     raise HTTPException(status_code=500, detail="Внутренняя ошибка")
+
+
+class TransactionItem(BaseModel):
+    id: str
+    type: str
+    amount: float
+    direction: str
+    category: Optional[str] = None
+    description: Optional[str] = None
+    booking_date: str
+    merchant: Optional[dict] = None
+    recipient: Optional[dict] = None
+    sender: Optional[dict] = None
+
+
+class TransactionsResponse(BaseModel):
+    transactions: list[TransactionItem]
+    count: int
+
+
+@app.get("/transactions", response_model=TransactionsResponse)
+async def transactions(
+    limit: int = 20,
+    user_id: str = Depends(_get_user_from_banking_token),
+):
+    """История операций из БД: seed-записи + новые после каждого /confirm."""
+    items = await db.get_transactions(user_id, limit=limit)
+    return TransactionsResponse(transactions=items, count=len(items))
 
 
 # ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-18 (Omega дизайн-система миграция)*
+*Последнее обновление: 2026-04-21 (SQLite: миграция mock API с in-memory на персистентную БД)*
 
 ### Структура репозитория
 
@@ -76,13 +76,17 @@ widget-prototype/
 │       └── AndroidManifest.xml
 ├── ml/
 │   └── mock_api/
-│       ├── main.py           ← FastAPI: /verify-phone, /auth, /auth/biometric, /parse, /balance, /command, /confirm, /ws/stt
-│       ├── data.py           ← mock-данные (баланс, контакты, счета)
+│       ├── main.py           ← FastAPI: /verify-phone, /auth, /auth/biometric, /parse, /balance, /command, /confirm, /transactions, /ws/stt
+│       ├── data.py           ← статик-конфиг (USERS для seed, RECOMMENDATIONS, BANNERS, MCC)
+│       ├── db.py             ← async database layer (aiosqlite): init_db, seed_db, все SQL-запросы
+│       ├── schema.sql        ← DDL: users, accounts, contacts, transactions, scheduled_payments, pending_transactions
+│       ├── seed.py           ← standalone-сидер: python seed.py [--reset]
+│       ├── vita.db           ← SQLite-файл (в Docker монтируется в /data/)
 │       ├── test_regex_parse.py ← pytest: 64 unit-теста L1-парсера
 │       ├── test_api.py       ← pytest: 19 integration-тестов FastAPI (TestClient)
 │       ├── Dockerfile        ← python:3.11-slim, uvicorn
-│       ├── docker-compose.yml← порт 127.0.0.1:8001→8000, env_file
-│       ├── requirements.txt  ← fastapi, uvicorn, httpx, jose, grpcio, protobuf, pytest
+│       ├── docker-compose.yml← порт 127.0.0.1:8001→8000, volume ./data:/data, env_file
+│       ├── requirements.txt  ← fastapi, uvicorn, httpx, jose, grpcio, protobuf, pytest, aiosqlite
 │       ├── .env.example      ← шаблон переменных окружения
 │       ├── gen_proto.sh      ← одноразовая регенерация gRPC-стабов
 │       ├── yandex_speech/    ← сгенерированные proto-стабы (stt_pb2, stt_pb2_grpc)
@@ -132,6 +136,8 @@ widget-prototype/
 | PIN-вход | `PinEntryActivity.kt` | ✅ |
 | Mock банковское приложение (5 Compose-экранов) | `MockBankActivity.kt` | ✅ |
 | Mock API (FastAPI) | `ml/mock_api/main.py` | ✅ |
+| SQLite БД (6 таблиц, aiosqlite) | `ml/mock_api/db.py` + `schema.sql` | ✅ |
+| GET /transactions — история операций из БД | `ml/mock_api/main.py` | ✅ |
 | STT gRPC Streaming (Яндекс SpeechKit v2) | `ml/mock_api/main.py` + `yandex_speech/` | ✅ |
 | NLP intent parsing | `ml/` (C-02) | 🔄 in progress (Яна) |
 
@@ -177,6 +183,10 @@ widget-prototype/
 | 2026-04-18 | Миграция UI на дизайн-систему Omega (ВТБ): OmegaColor, OmegaType, OmegaDimensions, OmegaComponents | Замена хардкод-цветов/VtbBlue/AccentGreen на семантические токены; tight/paragraph типографика; Material Icons → Omega-иконки из Figma; удалены Color.kt, Type.kt, VitaComponents.kt |
 | 2026-04-18 | Tight vs Paragraph body-стили: BodyTight* для меток/чипов, BodyParagraph* для многострочного текста | Figma `03-omg-typography` разделяет body на tight/paragraph; Material3 bodyLarge/Medium/Small маппятся на Paragraph |
 | 2026-04-18 | Omega Medium (500) маппится на SemiBold (600) — отсутствующий шрифт weight | VTB Group UI не содержит weight 500; созданы отдельные алиасы BodyTightMedium*/BodyParagraphMedium* для будущей миграции |
+| 2026-04-21 | Mock API мигрирован с in-memory dict на SQLite + aiosqlite: 6 таблиц, persistent balance, история транзакций | data.py был единственным источником данных в памяти — баланс сбрасывался при рестарте; теперь БД переживает рестарт контейнера |
+| 2026-04-21 | pending_transactions таблица вместо `_pending: dict` | Незавершённые операции выживают при рестарте; автоочистка просроченных при старте (expires_at < now) |
+| 2026-04-21 | /confirm записывает новую строку в transactions | История растёт в ходе демо: seed-транзакции + живые переводы видны через GET /transactions |
+| 2026-04-21 | docker-compose: volume ./data:/data + DB_PATH=/data/vita.db | vita.db персистентен между пересборками контейнера |
 
 ---
 

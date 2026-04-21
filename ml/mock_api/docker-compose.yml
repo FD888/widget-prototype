@@ -7,3 +7,7 @@ services:
       - "127.0.0.1:8001:8000"
     env_file: .env
     mem_limit: 256m
+    volumes:
+      - ./data:/data
+    environment:
+      DB_PATH: /data/vita.db

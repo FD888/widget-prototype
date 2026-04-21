@@ -155,6 +155,7 @@ _VITYA = {
             "account_type": "CurrentAccount",
             "name": "Дебетовая карта",
             "pan_masked": "4276 **** **** 1001",
+            "payment_system": "mir",
             "balance": 8_540.00,
             "currency": "RUB",
             "status": "Enabled",
@@ -167,6 +168,7 @@ _VITYA = {
             "account_type": "SavingsAccount",
             "name": "Накопительный счёт",
             "pan_masked": None,
+            "payment_system": "mir",
             "balance": 2_100.00,
             "currency": "RUB",
             "status": "Enabled",
@@ -487,6 +489,7 @@ _OLGA = {
             "account_type": "CurrentAccount",
             "name": "Дебетовая карта",
             "pan_masked": "4276 **** **** 2002",
+            "payment_system": "mir",
             "balance": 87_340.00,
             "currency": "RUB",
             "status": "Enabled",
@@ -499,6 +502,7 @@ _OLGA = {
             "account_type": "SavingsAccount",
             "name": "Накопительный счёт",
             "pan_masked": None,
+            "payment_system": "mir",
             "balance": 485_000.00,
             "currency": "RUB",
             "status": "Enabled",
@@ -812,6 +816,7 @@ _ARTYOM = {
             "account_type": "CurrentAccount",
             "name": "Дебетовая карта",
             "pan_masked": "4276 **** **** 3003",
+            "payment_system": "mir",
             "balance": 35_820.00,
             "currency": "RUB",
             "status": "Enabled",
@@ -824,6 +829,7 @@ _ARTYOM = {
             "account_type": "CreditCard",
             "name": "Кредитная карта ВТБ",
             "pan_masked": "4272 **** **** 3033",
+            "payment_system": "visa",
             "balance": -18_500.00,
             "credit_limit": 80_000.00,
             "available_credit": 61_500.00,
@@ -839,6 +845,7 @@ _ARTYOM = {
             "account_type": "SavingsAccount",
             "name": "Накопительный счёт",
             "pan_masked": None,
+            "payment_system": "mir",
             "balance": 75_000.00,
             "currency": "RUB",
             "status": "Enabled",
@@ -1146,38 +1153,10 @@ _ARTYOM = {
 }
 
 # ---------------------------------------------------------------------------
-# USERS — единый реестр пользователей
+# USERS — используется только seed.py для первичной загрузки в БД
 # ---------------------------------------------------------------------------
 USERS: dict[str, dict] = {
     "vitya":  _VITYA,
     "olga":   _OLGA,
     "artyom": _ARTYOM,
 }
-
-# ---------------------------------------------------------------------------
-# Phone index (нормализованный номер → (user_id, contact_key))
-# Строится один раз при старте из всех контактов всех пользователей
-# ---------------------------------------------------------------------------
-PHONE_INDEX: dict[str, tuple[str, str]] = {}
-
-
-def _normalize_phone(phone: str) -> str:
-    digits = "".join(c for c in phone if c.isdigit())
-    if len(digits) == 11 and digits[0] in ("7", "8"):
-        return "7" + digits[1:]
-    if len(digits) == 10:
-        return "7" + digits
-    return digits
-
-
-def build_phone_index() -> None:
-    seen_phones: set[str] = set()
-    for user_id, user_data in USERS.items():
-        for key, contact in user_data["contacts"].items():
-            norm = _normalize_phone(contact["phone"])
-            if norm and norm not in seen_phones:
-                PHONE_INDEX[norm] = (user_id, key)
-                seen_phones.add(norm)
-
-
-build_phone_index()

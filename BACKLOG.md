@@ -96,3 +96,4 @@ C-02 + C-03 → C-05
 | 2026-04-11 | Multi-user: data.py — единственный источник данных; PIN→user_id в JWT; 3 персоны из N=97 (Витя/Ольга/Артём) | Архитектурно правильная мультиюзерность = сильный аргумент на защите |
 | 2026-04-10 | mock_api: Dockerfile + docker-compose на VDS, сервис доступен на vtb.vibefounder.ru | Изолирован от ТГДОМ, nginx-прокси |
 | 2026-04-10 | STT переведён на gRPC Streaming (Яндекс SpeechKit v2): _stt_stream_grpc + yandex_speech/ | REST давал 4-6x переплату; gRPC — один стрим = один биллинг; partial слово-за-словом |
+| 2026-04-21 | Mock API: data.py (in-memory) → SQLite + aiosqlite; schema.sql, db.py, seed.py; GET /transactions | Баланс персистентен, история транзакций растёт в ходе демо |
