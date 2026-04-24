@@ -110,7 +110,9 @@ CREATE TABLE IF NOT EXISTS scheduled_payments (
     weekday         TEXT,
     category        TEXT,
     mcc             TEXT,
-    status          TEXT NOT NULL DEFAULT 'Active'
+    status          TEXT NOT NULL DEFAULT 'Active',
+    payment_type    TEXT NOT NULL DEFAULT 'subscription'
+    -- payment_type: credit_card | loan | autopayment | subscription
 );
 
 -- ---------------------------------------------------------------------------
@@ -123,9 +125,39 @@ CREATE TABLE IF NOT EXISTS pending_transactions (
     amount                REAL NOT NULL,
     display_name          TEXT,
     phone                 TEXT,
+    comment               TEXT,
     requires_manual_input INTEGER NOT NULL DEFAULT 0,
     created_at            TEXT NOT NULL,
     expires_at            TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_pending_expires ON pending_transactions(expires_at);
+
+-- ---------------------------------------------------------------------------
+-- intent_log — NLP-запросы для аналитики дашборда
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS intent_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT,
+    intent      TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_intent_log_created ON intent_log(created_at);
+
+-- ---------------------------------------------------------------------------
+-- hint_overrides — ручное управление подсказками для пользователей
+-- hint_type: 'auto' | 'reminder' | 'vygoda' | 'neutral' | 'none'
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS hint_overrides (
+    user_id           TEXT PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    hint_type         TEXT NOT NULL DEFAULT 'auto',
+    reminder_enabled  INTEGER NOT NULL DEFAULT 1,
+    vygoda_enabled    INTEGER NOT NULL DEFAULT 1,
+    forced_offer_id   TEXT,
+    forced_payment_id TEXT,
+    custom_text       TEXT,
+    custom_cta        TEXT,
+    custom_action     TEXT,
+    updated_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

@@ -44,8 +44,8 @@ class VoiceRecordingService : Service() {
 
         // VAD — клиентский детектор тишины
         private const val VAD_SILENCE_THRESHOLD = 0.20f   // ниже → тишина (фон ~0.08–0.15)
-        private const val VAD_SILENCE_MS        = 1200L   // тишина дольше 1.2 сек → submit
-        private const val VAD_MIN_SPEECH_MS     = 600L    // нужно хотя бы 0.6 сек речи до VAD
+        private const val VAD_SILENCE_MS        = 800L    // тишина дольше 0.8 сек → submit
+        private const val VAD_MIN_SPEECH_MS     = 400L    // нужно хотя бы 0.4 сек речи до VAD
         private const val VAD_POLL_MS           = 60L     // интервал опроса
     }
 
@@ -290,9 +290,9 @@ class VoiceRecordingService : Service() {
 
             // Размер bitmap для aurora: фиксированное разрешение (достаточно для мягкого эффекта)
             val bitmapW = 400
-            val bitmapH = 80
-            // Радиус скругления в пикселях пропорционально реальному dp (32dp)
-            val cornerPx = 32f * density * (bitmapH.toFloat() / (64f * density))
+            val bitmapH = 85
+            // Радиус скругления в пикселях пропорционально реальному dp (16dp)
+            val cornerPx = 16f * density * (bitmapH.toFloat() / (68f * density))
 
             val animStart = SystemClock.uptimeMillis()
             var frameCount = 0

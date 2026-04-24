@@ -6,6 +6,7 @@ import com.vtbvita.widget.BuildConfig
 import com.vtbvita.widget.SessionManager
 import com.vtbvita.widget.model.AccountInfo
 import com.vtbvita.widget.model.ConfirmationData
+import com.vtbvita.widget.model.HintResult
 import com.vtbvita.widget.model.OperationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -80,7 +81,8 @@ object MockApiService {
         amount: Double,
         recipient: String?,
         phone: String?,
-        context: Context
+        context: Context,
+        comment: String? = null
     ): ConfirmationData = withContext(Dispatchers.IO) {
         val token = BankingSession.getToken() ?: throw Exception("Требуется PIN")
         val body = JSONObject().apply {
@@ -88,6 +90,7 @@ object MockApiService {
             put("amount", amount)
             recipient?.let { put("recipient", it) }
             phone?.let { put("phone", it) }
+            comment?.let { put("comment", it) }
         }
         val json = post("/command", body, bankingToken = token)
 
@@ -108,7 +111,77 @@ object MockApiService {
             recipientBanks = banks,
             topupPhone = json.optString("topup_phone").takeIf { it.isNotEmpty() },
             operator = json.optString("operator").takeIf { it.isNotEmpty() },
-            requiresManualInput = json.optBoolean("requires_manual_input", false)
+            requiresManualInput = json.optBoolean("requires_manual_input", false),
+            comment = json.optString("comment").takeIf { it.isNotEmpty() }
+        )
+    }
+
+    /**
+     * GET /hint — ближайшее напоминание о платеже для пользователя.
+     * Требует только app_token (без banking JWT).
+     * Возвращает null если нет активных напоминаний или запрос не удался.
+     */
+    suspend fun getHint(context: Context, userId: String): HintResult? = withContext(Dispatchers.IO) {
+        runCatching {
+            val appToken = SessionManager.getAppToken(context)
+            if (appToken == null) {
+                android.util.Log.e("MockApi", "getHint: appToken is null")
+                return@runCatching null
+            }
+            val json = get("/hint?user_id=$userId", apiKey = appToken)
+            android.util.Log.d("MockApi", "getHint response: type=${json.optString("type")} widget_text=${json.optString("widget_text")}")
+            if (json.getString("type") == "none") return@runCatching null
+            HintResult(
+                type        = json.getString("type"),
+                widgetText  = json.optString("widget_text").takeIf { it.isNotEmpty() },
+                paymentId   = json.optString("payment_id").takeIf { it.isNotEmpty() },
+                name        = json.optString("name").takeIf { it.isNotEmpty() },
+                amount      = json.optDouble("amount").takeIf { !it.isNaN() },
+                daysUntilDue = json.optInt("days_until_due").takeIf { json.has("days_until_due") && !json.isNull("days_until_due") },
+                isOverdue   = json.optBoolean("is_overdue").takeIf { json.has("is_overdue") && !json.isNull("is_overdue") },
+                urgency     = json.optString("urgency").takeIf { it.isNotEmpty() },
+                label       = json.optString("label").takeIf { it.isNotEmpty() },
+                paymentType = json.optString("payment_type").takeIf { it.isNotEmpty() },
+                offerId     = json.optString("offer_id").takeIf { it.isNotEmpty() },
+                offerText   = json.optString("offer_text").takeIf { it.isNotEmpty() },
+                offerCta    = json.optString("offer_cta").takeIf { it.isNotEmpty() },
+                offerAction = json.optString("offer_action").takeIf { it.isNotEmpty() },
+            )
+        }.onFailure { e ->
+            android.util.Log.e("MockApi", "getHint FAILED: ${e.javaClass.simpleName}: ${e.message}", e)
+        }.getOrNull()
+    }
+
+    /** POST /command — pay_scheduled: оплата запланированного платежа. Требует banking JWT. */
+    suspend fun commandPayScheduled(
+        paymentId: String,
+        amount: Double,
+        context: Context
+    ): ConfirmationData = withContext(Dispatchers.IO) {
+        val token = BankingSession.getToken() ?: throw Exception("Требуется PIN")
+        val body = JSONObject().apply {
+            put("intent", "pay_scheduled")
+            put("payment_id", paymentId)
+            put("amount", amount)
+        }
+        val json = post("/command", body, bankingToken = token)
+        val banks = json.optJSONArray("recipient_banks")
+            ?.let { arr -> (0 until arr.length()).map { arr.getString(it) } }
+            ?: emptyList()
+        ConfirmationData(
+            transactionId          = json.getString("transaction_id"),
+            intent                 = json.getString("intent"),
+            title                  = json.getString("title"),
+            subtitle               = json.optString("subtitle").takeIf { it.isNotEmpty() },
+            amount                 = json.optDouble("amount", 0.0),
+            sourceAccounts         = json.getJSONArray("source_accounts").toAccountList(),
+            defaultAccountId       = json.getString("default_account_id"),
+            recipientDisplayName   = null,
+            recipientPhone         = null,
+            recipientBanks         = banks,
+            topupPhone             = null,
+            operator               = null,
+            requiresManualInput    = false,
         )
     }
 
@@ -192,7 +265,9 @@ object MockApiService {
                     name = getString("name"),
                     masked = getString("masked"),
                     balance = getDouble("balance"),
-                    type = getString("type")
+                    type = getString("type"),
+                    paymentSystem = optString("payment_system", "mir"),
+                    currency = optString("currency", "RUB")
                 )
             }
         }

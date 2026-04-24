@@ -401,21 +401,28 @@ Material3 маппинг (`OmegaTypography`):
 
 ### Ключевые семантические цвета (тёмная тема)
 
-| Семантика         | Токен Omega          | Hex       |
-|-------------------|----------------------|-----------|
-| Background        | spaceGraphite/600    | `#1E2024` |
-| Surface            | titanGray/900        | `#22252B` |
-| Surface alt        | titanGray/800        | `#2F343C` |
-| Chip/outline       | titanGray/700        | `#3F4650` |
-| Brand primary      | omegaBlue/600        | `#0160EC` |
-| Brand dark         | omegaBlue/900        | `#00358A` |
-| Brand deep         | omegaBlue/1000       | `#001644` |
-| Text primary       | light/text/constant  | `#FFFFFF` |
-| Text secondary     | titanGray/400        | `#7C8798` |
-| Text hint          | titanGray/500        | `#677283` |
-| Success            | callistianGreen/200  | `#4ED52F` |
-| Error              | martianRed/500       | `#E6163E` |
-| Warning            | venusOrange/500      | `#C45D02` |
+Источник: Figma REST API, `01-omg-palette` (palette page, background rectangle) + `02-omg-tokens` (constant/inverted page).
+Верифицировано 19.04.2026 напрямую через API.
+
+| Семантика         | Токен Omega              | Hex       | Примечание |
+|-------------------|--------------------------|-----------|------------|
+| **Background**    | spaceGraphite/1001       | `#101114` | ⚠️ ранее ошибочно документировался как spaceGraphite/600 (#1E2024) |
+| Surface            | titanGray/1001           | `#22252B` | bottom sheet, sheet scaffold |
+| Surface alt        | titanGray/800            | `#2F343C` | карточки внутри sheet (требует уточнения) |
+| Chip/outline       | titanGray/700            | `#3F4650` | чипы, теги |
+| Brand primary      | omegaBlue/600            | `#0160EC` | основной brand-синий |
+| Brand dark         | omegaBlue/900            | `#00358A` | глубокий синий |
+| Brand deep         | omegaBlue/1000           | `#001644` | самый тёмный синий |
+| Text primary       | light/text/constant      | `#FFFFFF` | заголовки, суммы |
+| Text secondary     | titanGray/400            | `#7C8798` | лейблы, подписи |
+| Text hint          | titanGray/500            | `#677283` | placeholder |
+| Success            | callistianGreen/200      | `#4ED52F` | успех |
+| Error              | martianRed/500           | `#E6163E` | ошибка |
+| Warning            | venusOrange/500          | `#C45D02` | предупреждение |
+
+> **Примечание по нумерации titanGray в Figma:**
+> Figma называет шаги нестандартно: titanGray/1001=#22252B, titanGray/900=#1B1E22, titanGray/1000=#16191D.
+> В нашем OmegaColor.kt используется собственная нумерация: v900=#22252B, v950=#1B1E22, v1000=#16191D — значения совпадают, только названия шагов разные.
 
 ---
 
@@ -427,13 +434,18 @@ Omega использует базовую единицу **1xBase = 4dp**:
 
 ### Border Radius
 
-| Omega Token | Значение  | Compose                         |
-|-------------|-----------|---------------------------------|
-| 0x          | 0dp       | `RoundedCornerShape(0.dp)`      |
-| 2x          | 8dp       | `RoundedCornerShape(8.dp)`      |
-| 3x          | 12dp      | `RoundedCornerShape(12.dp)`     |
-| 4x          | 16dp      | `RoundedCornerShape(16.dp)`     |
-| infinity    | full/pill | `RoundedCornerShape(50%)`        |
+Источник: Figma `02-omg-tokens`, radii demo page + component specs (button, card).
+
+| Omega Token | Значение  | Compose                         | Применение (из Figma) |
+|-------------|-----------|---------------------------------|-----------------------|
+| 0x          | 0dp       | `RoundedCornerShape(0.dp)`      | — |
+| 2x / tiny   | 8dp       | `RoundedCornerShape(8.dp)`      | мелкие элементы |
+| 3x / small  | 12dp      | `RoundedCornerShape(12.dp)`     | **кнопки (metaButton r=12)**, chip cards |
+| 4x / medium | 16dp      | `RoundedCornerShape(16.dp)`     | **карточки (card r=16)** |
+| 6x / large  | 24dp      | `RoundedCornerShape(24.dp)`     | bottom sheet top corners |
+| infinity    | full/pill | `RoundedCornerShape(50%)`       | аватары, pill-чипы |
+
+> **⚠️ Ранее задокументировано неверно:** кнопки использовали pill (28dp). По Figma button component: `metaButton r=12dp`.
 
 ### Shadows (Elevation)
 

@@ -70,6 +70,21 @@ object ContactMemory {
         }
     }
 
+    /** Все телефоны, которые пользователь когда-либо выбирал (из любого запроса). */
+    fun getAllPickedPhones(context: Context): Set<String> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val root = prefs.getString(KEY_DATA, "{}").parseJsonObject()
+        val phones = mutableSetOf<String>()
+        val keys = root.keys()
+        while (keys.hasNext()) {
+            val arr = root.getJSONArray(keys.next())
+            for (i in 0 until arr.length()) {
+                phones.add(arr.getJSONObject(i).getString("phone"))
+            }
+        }
+        return phones
+    }
+
     /** Буст к score в зависимости от количества выборов. */
     fun scoreBoost(count: Int): Float = when {
         count >= AUTO_RESOLVE_AT -> 0.5f  // пробивает порог 0.8 даже при base=0.5

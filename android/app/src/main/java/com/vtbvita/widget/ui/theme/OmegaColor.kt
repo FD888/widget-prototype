@@ -262,7 +262,7 @@ object UmberialSaphire {
 // ── Semantic Dark Theme Tokens ────────────────────────────────────────────
 
 // Backgrounds
-val OmegaBackground    = SpaceGraphite.v600   // #1E2024 — основной фон экранов
+val OmegaBackground    = SpaceGraphite.v900   // #101114 — основной фон экранов (Omega spec: background token)
 val OmegaSurface       = TitanGray.v900       // #22252B — карточки, шиты, поля ввода
 val OmegaSurfaceAlt    = TitanGray.v800       // #2F343C — bottom sheet, elevated surface
 val OmegaChip          = TitanGray.v700       // #3F4650 — chips, аватары, quick-amount
@@ -291,6 +291,14 @@ val OmegaError         = MartianRed.v500       // #E6163E — ошибка
 val OmegaErrorBg       = MartianRed.v0         // #FFEFEF — фон ошибки
 val OmegaWarning       = VenusOrange.v500      // #C45D02 — предупреждение
 val OmegaWarningBg     = VenusOrange.v1000     // #2F1100 — bg предупреждения (тёмная тема)
+val OmegaReminder      = OberonianYellow.v100  // #FFBA1B — amber для баннера напоминания
+
+val OmegaReminderBorder     = VenusOrange.v300     // #F77600 — оранжевая обводка напоминания
+val OmegaReminderBorderEnd  = MartianRed.v500      // #E6163E — конец градиента (красно-оранжевый)
+val OmegaReminderBadge       = VenusOrange.v500     // #C45D02 — фон бирки напоминания
+
+val OmegaVygodaBorder     = GalaxyPurple.v400      // #8F69FF — фиолетовая обводка для выгоды
+val OmegaVygodaBorderEnd = GalaxyPurple.v700       // #6B34D9 — конец градиента
 val OmegaInfo          = OmegaBlue.v400         // #3E84FF — информационные
 
 // Overlay / Dim

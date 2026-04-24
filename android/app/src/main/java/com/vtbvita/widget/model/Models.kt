@@ -8,7 +8,9 @@ data class AccountInfo(
     val name: String,
     val masked: String,
     val balance: Double,
-    val type: String
+    val type: String,
+    val paymentSystem: String = "mir",
+    val currency: String = "RUB"
 )
 
 data class ConfirmationData(
@@ -24,7 +26,25 @@ data class ConfirmationData(
     val recipientBanks: List<String>,
     val topupPhone: String?,
     val operator: String?,
-    val requiresManualInput: Boolean
+    val requiresManualInput: Boolean,
+    val comment: String? = null
+)
+
+data class HintResult(
+    val type: String,           // "reminder" | "vygoda" | "custom" | "none"
+    val widgetText: String? = null,
+    val paymentId: String?,
+    val name: String?,
+    val amount: Double?,
+    val daysUntilDue: Int?,
+    val isOverdue: Boolean?,
+    val urgency: String?,
+    val label: String?,
+    val paymentType: String? = null,
+    val offerId: String?,
+    val offerText: String?,
+    val offerCta: String?,
+    val offerAction: String?
 )
 
 data class OperationResult(
@@ -42,6 +62,7 @@ fun accountsToJson(accounts: List<AccountInfo>): String {
         arr.put(JSONObject().apply {
             put("id", a.id); put("name", a.name); put("masked", a.masked)
             put("balance", a.balance); put("type", a.type)
+            put("payment_system", a.paymentSystem); put("currency", a.currency)
         })
     }
     return arr.toString()
@@ -56,7 +77,9 @@ fun accountsFromJson(json: String): List<AccountInfo> {
                 name = getString("name"),
                 masked = getString("masked"),
                 balance = getDouble("balance"),
-                type = getString("type")
+                type = getString("type"),
+                paymentSystem = optString("payment_system", "mir"),
+                currency = optString("currency", "RUB")
             )
         }
     }

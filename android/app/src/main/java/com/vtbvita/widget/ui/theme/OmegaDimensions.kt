@@ -70,10 +70,13 @@ object OmegaSize {
     val avatarLg  = 48.dp
     val avatarXl  = 72.dp
 
-    val buttonHeight = 56.dp
+    val buttonHeight        = 56.dp
+    val buttonHeightCompact  = 52.dp
     val pillHeight   = 64.dp
-    val pinKeySize   = 72.dp
+    val pinKeySize          = 72.dp
+    val pinKeySizeCompact   = 64.dp
     val successIcon  = 80.dp
+    val searchFieldHeight    = 48.dp
 
     val pinDot    = 14.dp
     val handleBar = 36.dp

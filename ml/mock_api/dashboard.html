@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VTB Vita — Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --border: #30363d;
+    --vtb: #005b96;
+    --vtb-light: #1a7abf;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #f78166;
+    --purple: #bc8cff;
+    --yellow: #e3b341;
+    --text: #e6edf3;
+    --muted: #7d8590;
+    --card-radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-mark {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--vtb);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 16px; color: #fff; letter-spacing: -0.5px;
+  }
+  .logo-text { font-size: 18px; font-weight: 600; }
+  .logo-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .refresh-badge {
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 48px; }
+
+  h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 16px; }
+
+  /* KPI Cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--card-radius);
+    padding: 20px 22px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .kpi-card.blue::before   { background: var(--vtb-light); }
+  .kpi-card.green::before  { background: var(--green); }
+  .kpi-card.orange::before { background: var(--orange); }
+  .kpi-card.purple::before { background: var(--purple); }
+  .kpi-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .kpi-value { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+  .kpi-sub   { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .kpi-icon  { position: absolute; top: 18px; right: 18px; font-size: 22px; opacity: 0.15; }
+
+  /* Funnel */
+  .funnel-row {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); padding: 22px 28px;
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 32px;
+  }
+  .funnel-step {
+    flex: 1; text-align: center; position: relative;
+  }
+  .funnel-step:not(:last-child)::after {
+    content: '→';
+    position: absolute; right: -10px; top: 50%; transform: translateY(-50%);
+    font-size: 20px; color: var(--muted);
+  }
+  .funnel-num  { font-size: 32px; font-weight: 700; color: var(--accent); }
+  .funnel-lbl  { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .funnel-cvr  { font-size: 22px; font-weight: 700; color: var(--green); }
+  .funnel-note { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* Charts grid */
+  .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 32px; }
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); padding: 22px;
+  }
+  .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 18px; color: var(--text); }
+  .chart-wrap { position: relative; }
+
+  /* User activity */
+  .users-row { margin-bottom: 32px; }
+  .users-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); padding: 22px;
+  }
+  .users-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 18px; }
+  .user-bar-row { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
+  .user-name { width: 80px; font-size: 13px; font-weight: 500; }
+  .user-bar-bg {
+    flex: 1; height: 28px; background: var(--surface2);
+    border-radius: 6px; overflow: hidden; position: relative;
+  }
+  .user-bar-fill {
+    height: 100%; border-radius: 6px;
+    display: flex; align-items: center; padding: 0 10px;
+    font-size: 12px; font-weight: 600; color: #fff;
+    transition: width 0.6s ease;
+  }
+  .user-meta { width: 120px; text-align: right; font-size: 12px; color: var(--muted); }
+
+  /* Table */
+  .table-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); overflow: hidden;
+  }
+  .table-card h3 { font-size: 14px; font-weight: 600; padding: 18px 22px 0; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    padding: 10px 16px; font-size: 11px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;
+    border-bottom: 1px solid var(--border); text-align: left;
+  }
+  td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-transfer { background: rgba(88,166,255,.15); color: var(--accent); }
+  .badge-topup    { background: rgba(63,185,80,.15); color: var(--green); }
+  .badge-credit   { background: rgba(227,179,65,.15); color: var(--yellow); }
+  .badge-debit    { color: var(--orange); }
+  .amount-debit   { color: var(--orange); font-weight: 600; }
+  .amount-credit  { color: var(--green); font-weight: 600; }
+
+  /* Revenue block */
+  .revenue-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+  .rev-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); padding: 20px 22px;
+  }
+  .rev-card .rev-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .rev-card .rev-value { font-size: 22px; font-weight: 700; color: var(--green); }
+  .rev-card .rev-formula { font-size: 11px; color: var(--muted); margin-top: 6px; font-family: monospace; }
+  .rev-card .rev-note { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+
+  .loading { color: var(--muted); font-size: 14px; text-align: center; padding: 48px; }
+  .err { color: var(--orange); font-size: 13px; padding: 12px; background: rgba(247,129,102,.1); border-radius: 8px; }
+
+  @media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .revenue-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-mark">V</div>
+    <div>
+      <div class="logo-text">VTB Vita</div>
+      <div class="logo-sub">Analytics Dashboard</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="tab-bar">
+      <a class="tab active" href="/dashboard">Analytics</a>
+      <a class="tab" href="/dashboard/hints">Подсказки</a>
+    </div>
+    <div class="refresh-badge">
+      <span class="dot"></span>
+      <span id="refresh-label">Обновление через <span id="countdown">30</span>с</span>
+    </div>
+  </div>
+</header>
+
+<style>
+  .tab-bar { display: flex; gap: 4px; background: var(--surface2); border-radius: 8px; padding: 3px; }
+  .tab { padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; text-decoration: none; transition: all 0.15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--vtb); color: #fff; }
+</style>
+
+<main>
+  <div id="root"><div class="loading">Загрузка данных…</div></div>
+</main>
+
+<script>
+const COLORS = {
+  transfer: '#58a6ff',
+  balance:  '#3fb950',
+  topup:    '#f78166',
+  unknown:  '#7d8590',
+  alarm:    '#bc8cff',
+  timer:    '#e3b341',
+  open_app: '#ffa657',
+  call:     '#ff7b72',
+  navigate: '#79c0ff',
+};
+const USER_COLORS = ['#005b96','#3fb950','#bc8cff'];
+
+let charts = {};
+
+function fmt(n) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('ru-RU');
+}
+function fmtRub(n) {
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('ru-RU') + ' ₽';
+}
+
+async function load() {
+  try {
+    const r = await fetch('/dashboard/stats');
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    render(d);
+  } catch(e) {
+    document.getElementById('root').innerHTML = `<div class="err">Ошибка загрузки: ${e.message}</div>`;
+  }
+}
+
+function render(d) {
+  const { totals, funnel, intents, by_user, by_day, recent_transactions } = d;
+
+  const html = `
+    <h2>Ключевые показатели</h2>
+    <div class="kpi-grid">
+      <div class="kpi-card blue">
+        <div class="kpi-label">Всего операций</div>
+        <div class="kpi-value">${fmt(totals.transactions_count)}</div>
+        <div class="kpi-sub">${fmt(totals.transfers_count)} переводов · ${fmt(totals.topups_count)} пополнений</div>
+        <div class="kpi-icon">📊</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">Объём переводов</div>
+        <div class="kpi-value">${fmtRub(totals.transfers_volume)}</div>
+        <div class="kpi-sub">через виджет (wallet share)</div>
+        <div class="kpi-icon">💸</div>
+      </div>
+      <div class="kpi-card orange">
+        <div class="kpi-label">Объём пополнений</div>
+        <div class="kpi-value">${fmtRub(totals.topups_volume)}</div>
+        <div class="kpi-sub">M1: телефон через ВТБ</div>
+        <div class="kpi-icon">📱</div>
+      </div>
+      <div class="kpi-card purple">
+        <div class="kpi-label">Расчётная комиссия M1</div>
+        <div class="kpi-value">${fmtRub(totals.m1_commission_estimate)}</div>
+        <div class="kpi-sub">пополнения × 1% (инкремент)</div>
+        <div class="kpi-icon">💰</div>
+      </div>
+    </div>
+
+    <h2>Воронка: команды → подтверждения</h2>
+    <div class="funnel-row">
+      <div class="funnel-step">
+        <div class="funnel-num">${fmt(funnel.commands_sent)}</div>
+        <div class="funnel-lbl">Команд отправлено</div>
+        <div class="funnel-note">transfer + topup intent</div>
+      </div>
+      <div class="funnel-step">
+        <div class="funnel-num">${fmt(funnel.confirmed)}</div>
+        <div class="funnel-lbl">Подтверждено</div>
+        <div class="funnel-note">через /confirm</div>
+      </div>
+      <div class="funnel-step">
+        <div class="funnel-cvr">${funnel.conversion_rate !== null ? funnel.conversion_rate + '%' : 'N/A'}</div>
+        <div class="funnel-lbl">Конверсия</div>
+        <div class="funnel-note">${funnel.conversion_rate === null ? 'Live-данные появятся после первого запроса' : 'подтверждено / отправлено'}</div>
+      </div>
+    </div>
+
+    <h2>Динамика и распределение интентов</h2>
+    <div class="charts-row">
+      <div class="chart-card">
+        <h3>Операции по дням</h3>
+        <div class="chart-wrap"><canvas id="chartDays" height="120"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <h3>Интенты NLP</h3>
+        <div class="chart-wrap"><canvas id="chartIntents" height="120"></canvas></div>
+      </div>
+    </div>
+
+    <h2>Активность пользователей</h2>
+    <div class="users-card" style="margin-bottom:32px;">
+      <h3>Операции по персонам</h3>
+      <div id="userBars"></div>
+    </div>
+
+    <h2>Монетизационные прокси (M1 + M2A)</h2>
+    <div class="revenue-row">
+      <div class="rev-card">
+        <div class="rev-label">M1 — Wallet Share (фактический)</div>
+        <div class="rev-value">${fmtRub(totals.m1_commission_estimate)}</div>
+        <div class="rev-formula">топапы_объём × 1%</div>
+        <div class="rev-note">Инкрементальная комиссия с пополнений, переключённых от конкурентов на ВТБ</div>
+      </div>
+      <div class="rev-card">
+        <div class="rev-label">M2A — ВЫГОДА-строка (расчётный)</div>
+        <div class="rev-value" id="m2aVal">—</div>
+        <div class="rev-formula">MAU × 3 показа × 10% CTR × 6% conv × 800₽</div>
+        <div class="rev-note">При текущем числе пользователей. Конверсия в продукты ВТБ (накопительный счёт, страховка)</div>
+      </div>
+      <div class="rev-card">
+        <div class="rev-label">Итого прокси-доход/мес</div>
+        <div class="rev-value" id="totalRevVal">—</div>
+        <div class="rev-formula">M1 + M2A</div>
+        <div class="rev-note">Расчёт на основе текущей активности. Базовый сценарий финмодели.</div>
+      </div>
+    </div>
+
+    <h2>Последние транзакции</h2>
+    <div class="table-card">
+      <h3>История операций (все пользователи)</h3>
+      <table>
+        <thead><tr>
+          <th>Дата</th><th>Пользователь</th><th>Тип</th><th>Направление</th><th>Сумма</th><th>Описание</th>
+        </tr></thead>
+        <tbody id="txnBody"></tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById('root').innerHTML = html;
+
+  // Рисуем графики
+  drawDaysChart(by_day);
+  drawIntentsChart(intents);
+  drawUserBars(by_user);
+  fillTable(recent_transactions);
+  fillRevenue(by_user, totals);
+}
+
+function drawDaysChart(by_day) {
+  if (charts.days) { charts.days.destroy(); }
+  const ctx = document.getElementById('chartDays').getContext('2d');
+  charts.days = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: by_day.map(r => r.date),
+      datasets: [{
+        label: 'Операции',
+        data: by_day.map(r => r.count),
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,0.1)',
+        tension: 0.4,
+        fill: true,
+        pointRadius: 4,
+        pointBackgroundColor: '#58a6ff',
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#21262d' }, ticks: { color: '#7d8590', maxTicksLimit: 8 } },
+        y: { grid: { color: '#21262d' }, ticks: { color: '#7d8590', stepSize: 1 }, beginAtZero: true },
+      }
+    }
+  });
+}
+
+function drawIntentsChart(intents) {
+  if (charts.intents) { charts.intents.destroy(); }
+  const ctx = document.getElementById('chartIntents').getContext('2d');
+  const keys = Object.keys(intents);
+  const vals = keys.map(k => intents[k]);
+  const bgColors = keys.map(k => COLORS[k] || '#7d8590');
+  charts.intents = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: keys,
+      datasets: [{ data: vals, backgroundColor: bgColors, borderColor: '#161b22', borderWidth: 2 }]
+    },
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#e6edf3', padding: 12, font: { size: 12 } }
+        }
+      }
+    }
+  });
+}
+
+function drawUserBars(by_user) {
+  if (!by_user.length) return;
+  const maxVol = Math.max(...by_user.map(u => u.volume));
+  const el = document.getElementById('userBars');
+  el.innerHTML = by_user.map((u, i) => {
+    const pct = maxVol > 0 ? Math.round(u.volume / maxVol * 100) : 0;
+    return `
+      <div class="user-bar-row">
+        <div class="user-name">${u.display_name}</div>
+        <div class="user-bar-bg">
+          <div class="user-bar-fill" style="width:${pct}%;background:${USER_COLORS[i % USER_COLORS.length]}">
+            ${u.count} оп.
+          </div>
+        </div>
+        <div class="user-meta">${fmtRub(u.volume)}</div>
+      </div>`;
+  }).join('');
+}
+
+function fillTable(rows) {
+  const tbody = document.getElementById('txnBody');
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:#7d8590;text-align:center;padding:24px">Нет данных</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r => {
+    const typeClass = r.type === 'Transfer' ? 'badge-transfer' : r.type === 'TopUp' ? 'badge-topup' : '';
+    const amtClass  = r.direction === 'debit' ? 'amount-debit' : 'amount-credit';
+    const sign      = r.direction === 'debit' ? '−' : '+';
+    return `<tr>
+      <td>${r.booking_date}</td>
+      <td>${r.display_name}</td>
+      <td><span class="badge ${typeClass}">${r.type}</span></td>
+      <td><span style="color:var(--muted);font-size:11px">${r.direction}</span></td>
+      <td class="${amtClass}">${sign}${fmtRub(r.amount)}</td>
+      <td style="color:var(--muted)">${r.description || '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function fillRevenue(by_user, totals) {
+  const mau = by_user.length || 3;
+  // M2A: MAU × 3 показа × 10% CTR × 6% конверсия × 800 руб маржа
+  const m2a = Math.round(mau * 3 * 0.10 * 0.06 * 800);
+  const total = Math.round(totals.m1_commission_estimate) + m2a;
+  document.getElementById('m2aVal').textContent = fmtRub(m2a);
+  document.getElementById('totalRevVal').textContent = fmtRub(total);
+}
+
+// Auto-refresh countdown
+let countdown = 30;
+function tick() {
+  countdown--;
+  document.getElementById('countdown').textContent = countdown;
+  if (countdown <= 0) {
+    countdown = 30;
+    load();
+  }
+}
+
+load();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>

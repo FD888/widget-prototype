@@ -5,23 +5,14 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.AccountInfo
 import com.vtbvita.widget.model.ConfirmationData
@@ -31,13 +22,14 @@ import com.vtbvita.widget.ui.components.OmegaBankCarousel
 import com.vtbvita.widget.ui.components.OmegaButton
 import com.vtbvita.widget.ui.components.OmegaButtonStyle
 import com.vtbvita.widget.ui.components.OmegaInfoCard
-import com.vtbvita.widget.ui.components.OmegaSheetHeader
+import com.vtbvita.widget.ui.components.OmegaSheetScaffold
 import com.vtbvita.widget.ui.components.OmegaWarningCard
 import com.vtbvita.widget.ui.theme.OmegaError
-import com.vtbvita.widget.ui.theme.OmegaScrim
+import com.vtbvita.widget.ui.theme.OmegaSpacing
 import com.vtbvita.widget.ui.theme.OmegaSuccess
-import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaTextPrimary
 import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.OmegaType
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import kotlinx.coroutines.launch
 import org.json.JSONArray
@@ -118,155 +110,121 @@ private fun ConfirmBottomSheet(
     var selectedBank by remember { mutableStateOf(data.recipientBanks.firstOrNull() ?: "ВТБ") }
     var isLoading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var visible by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { visible = true }
+    val isTransfer = data.intent == "transfer"
+    val ctaText = if (isTransfer) "Перевести ${formatRub(data.amount)}"
+                  else "Оплатить ${formatRub(data.amount)}"
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(OmegaScrim)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            ),
-        contentAlignment = Alignment.BottomCenter
-    ) {
-        AnimatedVisibility(
-            visible = visible,
-            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(300)) +
-                    fadeIn(animationSpec = tween(220))
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                    .background(OmegaSurface)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { }
-            ) {
-                OmegaSheetHeader(
-                    title = data.title,
-                    subtitle = formatRub(data.amount)
-                )
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    data.recipientDisplayName?.let {
-                        OmegaInfoCard(label = "Получатель", value = it)
-                    }
-                    data.recipientPhone?.let {
-                        OmegaInfoCard(label = "Телефон", value = it)
-                    }
-                    data.topupPhone?.let {
-                        OmegaInfoCard(label = "Номер", value = it)
-                    }
-                    data.operator?.let {
-                        OmegaInfoCard(label = "Оператор", value = it)
-                    }
-
-                    if (data.intent == "transfer" && data.recipientDisplayName != null) {
-                        OmegaWarningCard(
-                            text = "Проверьте ФИО и номер получателя. После перевода банк не сможет вернуть деньги."
-                        )
-                    }
-
-                    val selectedAcc = data.sourceAccounts.find { it.id == selectedAccountId }
-                        ?: data.sourceAccounts.firstOrNull()
-
-                    if (data.sourceAccounts.size > 1) {
-                        OmegaInfoCard(
-                            label = "Счёт списания",
-                            value = selectedAcc?.let { "${it.name} •• ${it.masked.takeLast(4)}" }
-                                ?: "",
-                            trailingContent = { Text("▼", color = OmegaTextSecondary) },
-                            onClick = {
-                                val idx = data.sourceAccounts.indexOfFirst { it.id == selectedAccountId }
-                                selectedAccountId = data.sourceAccounts.getOrNull(idx + 1)?.id
-                                    ?: data.sourceAccounts.firstOrNull()?.id ?: selectedAccountId
-                            }
-                        )
-                    } else {
-                        selectedAcc?.let {
-                            OmegaInfoCard(
-                                label = "Счёт списания",
-                                value = "${it.name} •• ${it.masked.takeLast(4)}"
+    OmegaSheetScaffold(
+        title = data.title,
+        onDismiss = onDismiss,
+        onBack = null,
+        onClose = onDismiss,
+        footer = {
+            OmegaButton(
+                text = ctaText,
+                isLoading = isLoading,
+                enabled = !isLoading,
+                style = OmegaButtonStyle.Brand,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    isLoading = true; error = null
+                    scope.launch {
+                        runCatching {
+                            MockApiService.confirm(
+                                transactionId = data.transactionId,
+                                sourceAccountId = selectedAccountId,
+                                selectedBank = selectedBank,
+                                context = context
                             )
+                        }.onSuccess { result ->
+                            onSuccess("✓ ${result.message}")
+                        }.onFailure { e ->
+                            error = e.message ?: "Ошибка подтверждения"
+                            isLoading = false
                         }
                     }
-
-                    selectedAcc?.let {
-                        val after = it.balance - data.amount
-                        OmegaInfoCard(
-                            label = "После операции",
-                            value = formatRub(after),
-                            valueColor = if (after >= 0) OmegaSuccess else OmegaError
-                        )
-                    }
-
-                    if (data.recipientBanks.size > 1) {
-                        OmegaBankCarousel(selected = selectedBank, onSelect = { selectedBank = it })
-                    }
-
-                    error?.let {
-                        Text(it, color = OmegaError, style = MaterialTheme.typography.bodySmall)
-                    }
-
-                    Spacer(Modifier.height(4.dp))
                 }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(OmegaSurface)
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OmegaButton(
-                        text = "Подтвердить",
-                        isLoading = isLoading,
-                        enabled = !isLoading,
-                        style = OmegaButtonStyle.Brand,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            isLoading = true; error = null
-                            scope.launch {
-                                runCatching {
-                                    MockApiService.confirm(
-                                        transactionId = data.transactionId,
-                                        sourceAccountId = selectedAccountId,
-                                        selectedBank = selectedBank,
-                                        context = context
-                                    )
-                                }.onSuccess { result ->
-                                    onSuccess("✓ ${result.message}")
-                                }.onFailure { e ->
-                                    error = e.message ?: "Ошибка подтверждения"
-                                    isLoading = false
-                                }
-                            }
-                        }
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(OmegaSpacing.md)
+        ) {
+            // DisplayL сумма под топ-баром
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = formatRub(data.amount),
+                    style = OmegaType.DisplayL,
+                    color = OmegaTextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                if (data.recipientDisplayName != null) {
+                    Spacer(Modifier.height(OmegaSpacing.xs))
+                    Text(
+                        text = data.recipientDisplayName,
+                        style = OmegaType.BodyM,
+                        color = OmegaTextSecondary,
+                        textAlign = TextAlign.Center
                     )
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(onClick = onDismiss)
-                            .padding(vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Отмена", style = MaterialTheme.typography.bodyMedium, color = OmegaTextSecondary)
-                    }
                 }
             }
+
+            Spacer(Modifier.height(OmegaSpacing.xs))
+
+            data.recipientPhone?.let { OmegaInfoCard(label = "Телефон", value = it) }
+            data.topupPhone?.let { OmegaInfoCard(label = "Номер", value = it) }
+            data.operator?.let { OmegaInfoCard(label = "Оператор", value = it) }
+
+            if (isTransfer && data.recipientDisplayName != null) {
+                OmegaWarningCard(
+                    text = "Проверьте ФИО и номер получателя. После перевода банк не сможет вернуть деньги."
+                )
+            }
+
+            val selectedAcc = data.sourceAccounts.find { it.id == selectedAccountId }
+                ?: data.sourceAccounts.firstOrNull()
+
+            if (data.sourceAccounts.size > 1) {
+                OmegaInfoCard(
+                    label = "Счёт списания",
+                    value = selectedAcc?.let { "${it.name} •• ${it.masked.takeLast(4)}" } ?: "",
+                    trailingContent = { Text("▼", color = OmegaTextSecondary) },
+                    onClick = {
+                        val idx = data.sourceAccounts.indexOfFirst { it.id == selectedAccountId }
+                        selectedAccountId = data.sourceAccounts.getOrNull(idx + 1)?.id
+                            ?: data.sourceAccounts.firstOrNull()?.id ?: selectedAccountId
+                    }
+                )
+            } else {
+                selectedAcc?.let {
+                    OmegaInfoCard(label = "Счёт списания", value = "${it.name} •• ${it.masked.takeLast(4)}")
+                }
+            }
+
+            selectedAcc?.let {
+                val after = it.balance - data.amount
+                OmegaInfoCard(
+                    label = "После операции",
+                    value = formatRub(after),
+                    valueColor = if (after >= 0) OmegaSuccess else OmegaError
+                )
+            }
+
+            if (data.recipientBanks.size > 1) {
+                OmegaBankCarousel(selected = selectedBank, onSelect = { selectedBank = it })
+            }
+
+            error?.let {
+                Text(it, color = OmegaError, style = OmegaType.BodyTightM)
+            }
+
+            Spacer(Modifier.height(OmegaSpacing.xs))
         }
     }
 }

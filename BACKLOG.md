@@ -36,6 +36,10 @@ C-02 + C-03 → C-05
 | C-06 | Контекстная строка виджета с mock-событиями | [ ] | Денис |
 | C-07 | Edge cases: NLP не распознал / несколько кандидатов | [x] | Яна + Денис |
 | C-09 | Замер объёма данных виджета vs полного приложения (для питча) | [ ] | Яна |
+| C-10 | Hint system: GET /hint + ReminderBanner + VygodaBanner | [x] | Денис |
+| C-11 | Hint dashboard: /dashboard/hints (CRUD overrides) | [x] | Денис |
+| C-12 | LLM cascade: DeepSeek → OpenRouter → unknown | [x] | Денис |
+| C-13 | pay_scheduled intent + comment в переводах | [x] | Денис |
 
 ---
 
@@ -51,6 +55,7 @@ C-02 + C-03 → C-05
 | C-04+ | Widget UX: VoiceRecordingService, пульсирующие кольца, VAD, кнопка ↑, анимация InputActivity | 2026-04-05 | `feature/C-04-widget-ui` |
 | C-05 | Деплой: Docker + nginx + vtb.vibefounder.ru, GitHub Release APK | 2026-04-10 | `feature/C-05-deploy` |
 | C-04++ | BiometricHelper (реальный BiometricPrompt), VTB-шрифты, логотипы банков, VitaComponents, /auth/biometric | 2026-04-10 | `feature/C-04-widget-ui` |
+| DI-02 | Sheet host framework + Opus Design Audit: OmegaSheetScaffold, компактные плашки, карточки Откуда/Кому, шаг подтверждения, аватары, операторы, VTB-карты, personalization module, Tone of Voice | 2026-04-24 | `feature/DI-02-sheet-host-framework` |
 
 ---
 
@@ -97,3 +102,14 @@ C-02 + C-03 → C-05
 | 2026-04-10 | mock_api: Dockerfile + docker-compose на VDS, сервис доступен на vtb.vibefounder.ru | Изолирован от ТГДОМ, nginx-прокси |
 | 2026-04-10 | STT переведён на gRPC Streaming (Яндекс SpeechKit v2): _stt_stream_grpc + yandex_speech/ | REST давал 4-6x переплату; gRPC — один стрим = один биллинг; partial слово-за-словом |
 | 2026-04-21 | Mock API: data.py (in-memory) → SQLite + aiosqlite; schema.sql, db.py, seed.py; GET /transactions | Баланс персистентен, история транзакций растёт в ходе демо |
+| 2026-04-22 | Analytics Dashboard: vtb.vibefounder.ru/dashboard (Basic Auth vita/vtb2026); intent_log; KPI, воронка, интенты, Chart.js | Продуктовые метрики прямо из SQLite — монетизационные прокси M1+M2A |
+| 2026-04-23 | Hint system: GET /hint (reminder/vygoda/none); db.get_upcoming_reminder, db.get_vygoda_offer, db.get_available_offers | Персонализация виджета на основе реальных данных из БД |
+| 2026-04-23 | Hint Dashboard: /dashboard/hints (CRUD hint_overrides, Basic Auth) | Продуктовый менеджер может форсировать подсказку для демо |
+| 2026-04-23 | pay_scheduled intent: оплата плановых платежей (credit_card/loan/autopayment) через /command | Новый банковский intent помимо transfer/balance/topup |
+| 2026-04-23 | comment в переводах: regex + LLM парсят «за пиццу» → comment field | ConfirmationResponse.comment для отображения в модале |
+| 2026-04-23 | bot_redirect: неизвестные интенты → bot_redirect=true + original_text | Ключ для интеграции с чат-ботом банка |
+| 2026-04-23 | LLM cascade: DeepSeek (прямой) → OpenRouter (deepseek/deepseek-chat) → unknown | Уменьшение latency и повышение надёжности NLP |
+| 2026-04-24 | OmegaSheetScaffold — единый bottom-sheet контейнер для всех виджет-плашек | Устранение дублирования overlay-кода; scrim + handle + TopBar + content/footer slots |
+| 2026-04-24 | Opus Design Audit → реализация S-1..S-10: компактные плашки vs fullscreen, карточки «Откуда/Кому», аватары, операторы, платёжные системы | Визуальное соответствие ВТБ Онлайн; виджет ≠ приложение — два визуальных языка |
+| 2026-04-24 | Personalization module (HintRepository + NeutralHints + WidgetHintTexts) | Offline-first нейтральные фразы + серверные hint; чувствительность данных (credit_card/loan суммы скрыты) |
+| 2026-04-24 | Tone of Voice утверждён: друг-финансист, «ты», строчные, без эмодзи | TONE_OF_VOICE.md — единый стиль всех текстов виджета |

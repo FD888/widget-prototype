@@ -5,18 +5,20 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,15 +26,18 @@ import androidx.fragment.app.FragmentActivity
 import com.vtbvita.widget.R
 import com.vtbvita.widget.api.BankingTokenResult
 import com.vtbvita.widget.api.MockApiService
-import com.vtbvita.widget.ui.theme.VTBVitaTheme
-import com.vtbvita.widget.ui.theme.OmegaBrandGradient
-import com.vtbvita.widget.ui.theme.OmegaChip
+import com.vtbvita.widget.ui.components.OmegaTopBar
 import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaRadius
+import com.vtbvita.widget.ui.theme.OmegaSize
+import com.vtbvita.widget.ui.theme.OmegaSpacing
 import com.vtbvita.widget.ui.theme.OmegaSurface
 import com.vtbvita.widget.ui.theme.OmegaTextDisabled
 import com.vtbvita.widget.ui.theme.OmegaTextHint
 import com.vtbvita.widget.ui.theme.OmegaTextPrimary
 import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.TitanGray
+import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -90,7 +95,6 @@ fun PinEntryScreen(
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     var pin by remember { mutableStateOf("") }
-    var shake by remember { mutableStateOf(false) }
     var errorMsg by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
 
@@ -129,17 +133,12 @@ fun PinEntryScreen(
             if (pin.length == 4) {
                 isLoading = true
                 scope.launch {
-                    val result = MockApiService.auth(pin, context)
-                    result.fold(
-                        onSuccess = { tokenResult ->
-                            onSuccess(tokenResult)
-                        },
+                    MockApiService.auth(pin, context).fold(
+                        onSuccess = { tokenResult -> onSuccess(tokenResult) },
                         onFailure = {
                             errorMsg = "Неверный PIN"
-                            shake = true
                             delay(400)
                             pin = ""
-                            shake = false
                             delay(800)
                             errorMsg = ""
                             isLoading = false
@@ -150,112 +149,75 @@ fun PinEntryScreen(
         }
     }
 
+    // Sheet-style layout: scrim + bottom sheet surface
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(OmegaBrandGradient)
+            .background(Color.Black.copy(alpha = 0.5f)),
+        contentAlignment = Alignment.BottomCenter
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .systemBarsPadding(),
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(OmegaSurface)
+                .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_arrow_up),
-                    contentDescription = "Назад",
-                    tint = OmegaTextPrimary,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clickable(onClick = onBack)
-                )
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(OmegaChip, CircleShape)
-                        .clickable(onClick = onLogout),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_exit),
-                        contentDescription = "Выйти",
-                        tint = OmegaTextPrimary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(40.dp))
-
+            // Handle bar
             Box(
                 modifier = Modifier
-                    .size(72.dp)
-                    .background(OmegaChip, CircleShape),
+                    .fillMaxWidth()
+                    .padding(top = OmegaSpacing.sm)
+                    .height(OmegaSpacing.sm + OmegaSpacing.xs),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    persona.name.first().toString(),
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = OmegaTextPrimary
+                Box(
+                    modifier = Modifier
+                        .width(OmegaSize.handleBar)
+                        .height(OmegaSpacing.xs)
+                        .clip(RoundedCornerShape(OmegaSpacing.xxs))
+                        .background(TitanGray.v700)
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
-
-            Text(
-                persona.name,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = OmegaTextPrimary
-            )
-            Text(
-                persona.role,
-                fontSize = 13.sp,
-                color = OmegaTextSecondary
+            // Top bar: centred title + close
+            OmegaTopBar(
+                title = "Введите PIN",
+                onBack = null,
+                onClose = onBack
             )
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(OmegaSpacing.xl))
 
-            Text(
-                "Введите PIN",
-                fontSize = 15.sp,
-                color = OmegaTextSecondary
-            )
-
-            Spacer(Modifier.height(20.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // PIN dots
+            Row(horizontalArrangement = Arrangement.spacedBy(OmegaSpacing.md)) {
                 repeat(4) { i ->
                     val filled = i < pin.length
-                    val color = when {
+                    val dotColor = when {
                         errorMsg.isNotBlank() -> OmegaError
                         filled -> OmegaTextPrimary
                         else -> OmegaTextHint
                     }
                     Box(
                         modifier = Modifier
-                            .size(14.dp)
-                            .background(color, CircleShape)
+                            .size(OmegaSize.pinDot)
+                            .background(dotColor, CircleShape)
                     )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(OmegaSpacing.sm))
 
-            if (errorMsg.isNotBlank()) {
-                Text(errorMsg, fontSize = 13.sp, color = OmegaError)
+            Box(modifier = Modifier.height(OmegaSpacing.xl)) {
+                if (errorMsg.isNotBlank()) {
+                    Text(errorMsg, fontSize = 13.sp, color = OmegaError)
+                }
             }
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(OmegaSpacing.md))
 
+            // Keypad
             val keys = listOf(
                 listOf("1", "2", "3"),
                 listOf("4", "5", "6"),
@@ -264,10 +226,10 @@ fun PinEntryScreen(
             )
 
             keys.forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(OmegaSpacing.xl)) {
                     row.forEach { key ->
                         if (key.isEmpty()) {
-                            Spacer(Modifier.size(72.dp))
+                            Spacer(Modifier.size(OmegaSize.pinKeySizeCompact))
                         } else {
                             PinKey(label = key, enabled = !isLoading) {
                                 when (key) {
@@ -278,16 +240,21 @@ fun PinEntryScreen(
                         }
                     }
                 }
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(OmegaSpacing.lg))
             }
 
+            // Biometric
             if (showBiometric) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(OmegaSpacing.xs))
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .background(OmegaChip, CircleShape)
-                        .clickable(enabled = !isLoading) {
+                        .clip(CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = ripple(bounded = true),
+                            enabled = !isLoading
+                        ) {
                             BiometricHelper.authenticate(
                                 activity = activity!!,
                                 onSuccess = { loginWithBiometric() }
@@ -298,24 +265,20 @@ fun PinEntryScreen(
                     Icon(
                         painter = painterResource(R.drawable.ic_fingerprint),
                         contentDescription = "Войти по биометрии",
-                        tint = OmegaTextPrimary,
-                        modifier = Modifier.size(28.dp)
+                        tint = OmegaTextSecondary,
+                        modifier = Modifier.size(OmegaSize.iconXl)
                     )
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Биометрия",
-                    fontSize = 11.sp,
-                    color = OmegaTextHint
-                )
+                Spacer(Modifier.height(OmegaSpacing.xs))
+                Text("Биометрия", fontSize = 11.sp, color = OmegaTextHint)
             }
 
-            Spacer(Modifier.weight(1f))
-
+            // PIN hint
+            Spacer(Modifier.height(OmegaSpacing.lg))
             Box(
                 modifier = Modifier
-                    .background(OmegaSurface, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .background(TitanGray.v800, OmegaRadius.sm)
+                    .padding(horizontal = OmegaSpacing.lg, vertical = OmegaSpacing.sm)
             ) {
                 Text(
                     "Подсказка: PIN = ${persona.pin}",
@@ -324,7 +287,7 @@ fun PinEntryScreen(
                 )
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(OmegaSpacing.xxl))
         }
     }
 }
@@ -332,24 +295,25 @@ fun PinEntryScreen(
 @Composable
 fun PinKey(
     label: String,
-    size: Dp = 72.dp,
+    size: Dp = OmegaSize.pinKeySizeCompact,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
             .size(size)
-            .background(
-                if (enabled) OmegaChip else OmegaSurface,
-                CircleShape
-            )
-            .clickable(enabled = enabled, onClick = onClick),
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = true),
+                enabled = enabled,
+                onClick = onClick
+            ),
         contentAlignment = Alignment.Center
     ) {
         Text(
             label,
             fontSize = if (label == "⌫") 22.sp else 26.sp,
-            fontWeight = FontWeight.Medium,
             color = if (enabled) OmegaTextPrimary else OmegaTextDisabled
         )
     }

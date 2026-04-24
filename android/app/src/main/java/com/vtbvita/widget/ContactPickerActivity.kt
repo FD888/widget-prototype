@@ -10,42 +10,52 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.vtbvita.widget.nlp.ContactCandidate
+import com.vtbvita.widget.nlp.ContactMemory
+import com.vtbvita.widget.ui.components.OmegaAvatar
 import com.vtbvita.widget.ui.components.OmegaButton
 import com.vtbvita.widget.ui.components.OmegaButtonStyle
-import com.vtbvita.widget.ui.components.OmegaSheetHeader
-import com.vtbvita.widget.ui.components.OmegaTextField
-import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
+import com.vtbvita.widget.ui.components.OmegaSearchField
+import com.vtbvita.widget.ui.components.OmegaSelectableChip
+import com.vtbvita.widget.ui.components.OmegaSheetScaffold
 import com.vtbvita.widget.ui.theme.OmegaChip
-import com.vtbvita.widget.ui.theme.OmegaScrim
-import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaSize
+import com.vtbvita.widget.ui.theme.OmegaSpacing
 import com.vtbvita.widget.ui.theme.OmegaTextPrimary
 import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.OmegaType
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.Color
 
 data class Contact(val name: String, val phone: String)
 
-/**
- * Шаг 1 флоу перевода: выбор получателя из контактов телефона.
- */
 class ContactPickerActivity : ComponentActivity() {
 
     companion object {
@@ -79,11 +89,17 @@ class ContactPickerActivity : ComponentActivity() {
                 ContactPickerSheet(
                     onDismiss = { finish() },
                     onContactSelected = { contact ->
-                        val i = TransferDetailsActivity.newIntent(
-                            this, contact.name, contact.phone,
-                            amount = prefillAmount ?: 0.0,
-                            hasContactPicker = true
+                        val candidate = ContactCandidate(
+                            displayName = contact.name.ifBlank { contact.phone },
+                            phone = contact.phone,
+                            bankDisplayName = "ВТБ",
+                            score = 1f,
+                            pickCount = 0
                         )
+                        TransferFlowActivity.pendingCandidates = listOf(candidate)
+                        TransferFlowActivity.pendingRecipientRaw = contact.name
+                        TransferFlowActivity.pendingAutoContact = candidate
+                        val i = TransferFlowActivity.newIntentAutoResolved(this, prefillAmount)
                         BankingSession.putInIntent(i)
                         startingTransfer = true
                         startActivity(i)
@@ -99,9 +115,11 @@ private fun ContactPickerSheet(
     onDismiss: () -> Unit,
     onContactSelected: (Contact) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     var query by remember { mutableStateOf("") }
     var contacts by remember { mutableStateOf<List<Contact>>(emptyList()) }
+    var recentPhones by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var activeTab by remember { mutableStateOf("all") }
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS)
@@ -114,100 +132,98 @@ private fun ContactPickerSheet(
     ) { granted -> hasPermission = granted }
 
     LaunchedEffect(hasPermission) {
-        if (hasPermission) contacts = loadContacts(context)
-        else permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+        if (hasPermission) {
+            contacts = loadContacts(context)
+            recentPhones = ContactMemory.getAllPickedPhones(context)
+        } else {
+            permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
+        }
     }
 
-    val filtered = remember(contacts, query) {
-        if (query.isBlank()) contacts
-        else contacts.filter {
+    val hasRecent = recentPhones.isNotEmpty()
+
+    val filtered = remember(contacts, query, activeTab, recentPhones) {
+        val base = if (query.isBlank() && activeTab == "recent" && hasRecent) {
+            contacts.filter { it.phone in recentPhones }
+        } else contacts
+        if (query.isBlank()) base
+        else base.filter {
             it.name.contains(query, ignoreCase = true) || it.phone.contains(query)
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(OmegaScrim)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            ),
-        contentAlignment = Alignment.BottomCenter
+    OmegaSheetScaffold(
+        title = "Кому",
+        onDismiss = onDismiss,
+        onBack = null,
+        onClose = onDismiss
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.88f)
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(OmegaSurface)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { }
-        ) {
-            OmegaSheetHeader(title = "Кому перевести?")
+        OmegaSearchField(
+            value = query,
+            onValueChange = { query = it }
+        )
 
-            OmegaTextField(
-                value = query,
-                onValueChange = { query = it },
-                label = "",
-                placeholder = "Имя или номер телефона",
-                modifier = Modifier.padding(horizontal = 16.dp),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
-            )
+        if (query.isBlank() && hasRecent) {
+            Spacer(Modifier.height(OmegaSpacing.sm))
+            Row(horizontalArrangement = Arrangement.spacedBy(OmegaSpacing.sm)) {
+                OmegaSelectableChip(
+                    label = "Недавние",
+                    selected = activeTab == "recent",
+                    onClick = { activeTab = "recent" }
+                )
+                OmegaSelectableChip(
+                    label = "Все",
+                    selected = activeTab == "all",
+                    onClick = { activeTab = "all" }
+                )
+            }
+        }
 
-            Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(OmegaSpacing.sm))
 
-            when {
-                !hasPermission -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+        when {
+            !hasPermission -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = OmegaSpacing.xxl),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(OmegaSpacing.md)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Text(
-                                "Нужен доступ к контактам",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = OmegaTextPrimary
-                            )
-                            OmegaButton(
-                                text = "Разрешить",
-                                style = OmegaButtonStyle.Brand,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                onClick = { permissionLauncher.launch(Manifest.permission.READ_CONTACTS) }
-                            )
-                        }
-                    }
-                }
-                filtered.isEmpty() && query.isNotBlank() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
+                        Text(
+                            "Нужен доступ к контактам",
+                            style = OmegaType.BodyTightL,
+                            color = OmegaTextPrimary
+                        )
                         OmegaButton(
-                            text = "Перевести на «$query»",
+                            text = "Разрешить",
                             style = OmegaButtonStyle.Brand,
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { onContactSelected(Contact("", query)) }
+                            onClick = { permissionLauncher.launch(Manifest.permission.READ_CONTACTS) }
                         )
                     }
                 }
-                else -> {
-                    LazyColumn(
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        items(filtered) { contact ->
-                            ContactRow(contact = contact, onClick = { onContactSelected(contact) })
-                        }
-                        item { Spacer(Modifier.height(16.dp)) }
+            }
+            filtered.isEmpty() && query.isNotBlank() -> {
+                OmegaButton(
+                    text = "Перевести на «$query»",
+                    style = OmegaButtonStyle.Brand,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = OmegaSpacing.xs),
+                    onClick = { onContactSelected(Contact("", query)) }
+                )
+            }
+            else -> {
+                LazyColumn(
+                    contentPadding = PaddingValues(vertical = OmegaSpacing.xs),
+                    modifier = Modifier.height(420.dp)
+                ) {
+                    items(filtered) { contact ->
+                        ContactRow(contact = contact, onClick = { onContactSelected(contact) })
                     }
                 }
             }
@@ -221,34 +237,25 @@ private fun ContactRow(contact: Contact, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
+            .padding(vertical = OmegaSpacing.sm + OmegaSpacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(OmegaChip),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = contact.name.firstOrNull()?.uppercase() ?: "#",
-                color = OmegaTextPrimary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp
-            )
-        }
-        Spacer(Modifier.width(12.dp))
+        OmegaAvatar(
+            name = contact.name.ifBlank { contact.phone },
+            avatarSize = OmegaSize.avatarMd,
+            bgColor = OmegaChip,
+            textColor = Color.White
+        )
+        Spacer(Modifier.width(OmegaSpacing.md))
         Column {
             Text(
                 contact.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = OmegaTextPrimary,
-                fontWeight = FontWeight.Medium
+                style = OmegaType.BodyTightSemiBoldL,
+                color = OmegaTextPrimary
             )
             Text(
                 contact.phone,
-                style = MaterialTheme.typography.bodySmall,
+                style = OmegaType.BodyTightM,
                 color = OmegaTextSecondary
             )
         }

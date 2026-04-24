@@ -19,10 +19,13 @@
 - При нажатии на микрофон в виджете → InputActivity сразу в режиме RECORDING
 
 ### FR-03 — NLP-распознавание
-- Распознаёт 3 банковских intent'а: `transfer`, `balance`, `topup`
-- Для `transfer` — извлекает имя получателя и сумму
+- Распознаёт банковские intent'ы: `transfer`, `balance`, `topup`, `pay_scheduled`
+- Для `transfer` — извлекает имя получателя, сумму и опциональный комментарий («за пиццу»)
 - Для `topup` — определяет номер телефона
-- Парсер: Mock API (`ml/mock_api/`) + NLP-ядро Яны (`ml/`, C-02)
+- Для `pay_scheduled` — ID планового платежа из подсказки
+- Парсер двухуровневый: L1 regex → L2 LLM cascade (DeepSeek прямой → OpenRouter → unknown)
+- Нераспознанные интенты标记 `bot_redirect=true` с оригинальным текстом — для передачи в чат-бот банка
+- Mock API (`ml/mock_api/`) + NLP-ядро Яны (`ml/`, C-02)
 
 ### FR-04 — Флоу «Перевод»
 - Шаг 1: ContactPickerActivity — поиск по реальной телефонной книге (ContactsContract), аватар с инициалами
@@ -60,8 +63,28 @@
 
 ### FR-10 — Mock-данные
 - История переводов: минимум 5 контактов (имена, карты, суммы)
-- Баланс: возвращается из data.py
+- Баланс: возвращается из data.py (seed-db через SQLite)
 - Все данные вымышленные
+
+### FR-11 — Персонализированные подсказки (hint system)
+- GET /hint возвращает одну подсказку: reminder / vygoda / none
+- Напоминания: таблица scheduled_payments с payment_type (credit_card/loan/autopayment/subscription)
+- Офферы ВЫГОДА: расчёт на лету по сегменту, балансу, истории трат, активным продуктам
+- Override через /dashboard/hints: менеджер может форсировать тип подсказки и текст
+- На виджете — нейтральная фраза из локального пула (NeutralHints.kt)
+- В InputActivity — баннер НАПОМИНАНИЕ или ВЫГОДА
+
+### FR-12 — Аналитический дашборд
+- GET /dashboard — HTML-дашборд с Chart.js (Basic Auth: vita/vtb2026)
+- GET /dashboard/stats — JSON-эндпоинт с KPI, воронкой, интентами, таблицей транзакций
+- GET /dashboard/hints — страница управления подсказками (CRUD hint_overrides)
+- Данные: intent_log (каждый /parse логируется) + transactions + users
+
+### FR-13 — LLM cascade (NLP)
+- L1: regex-парсер (мгновенный, ~5мс)
+- L2: DeepSeek API (прямой) → OpenRouter (deepseek/deepseek-chat) → unknown
+- bot_redirect=true для нераспознанных — передача в чат-бот банка
+- comment field: «переведи Кате 500 за пиццу» → comment="пиццу"
 
 ---
 
@@ -94,8 +117,6 @@
 ## Out of scope (не реализуем в прототипе)
 
 - Реальные банковские API и реальные транзакции
-- Настоящая биометрия (BiometricPrompt) — кнопка «Подтвердить» как заглушка
-- JWT и серверная аутентификация
 - iOS-версия
 - Push-уведомления (FCM)
 - Сложные операции: инвестиции, кредиты, конвертация
@@ -116,3 +137,13 @@
 - [x] Вход / выход из профиля, состояние виджета меняется
 - [ ] NLP-сервис доступен по публичному URL (C-05)
 - [ ] README позволяет воспроизвести демо с нуля
+
+## Дополнительные критерии (после C-05)
+
+- [x] Персонализированные подсказки: GET /hint (reminder/vygoda/none)
+- [x] Dashboard аналитики: /dashboard (Basic Auth)
+- [x] Dashboard подсказок: /dashboard/hints (CRUD hint_overrides)
+- [x] LLM cascade: DeepSeek → OpenRouter → unknown
+- [x] bot_redirect для неизвестных интентов
+- [x] comment в переводах: «за пиццу»
+- [x] pay_scheduled: оплата плановых платежей из подсказки

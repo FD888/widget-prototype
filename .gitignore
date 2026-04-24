@@ -47,3 +47,11 @@ secrets.properties
 
 .mcp.json
 Скриншоты/
+
+# Design assets (локальное хранилище Figma-ассетов)
+design-assets/
+
+# SQLite database (runtime artifact — не коммитить)
+*.db
+*.db-wal
+*.db-shm

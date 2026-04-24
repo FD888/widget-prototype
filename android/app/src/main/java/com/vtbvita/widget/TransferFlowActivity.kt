@@ -8,51 +8,50 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vtbvita.widget.R
+import com.vtbvita.widget.api.MockApiService
+import com.vtbvita.widget.model.AccountInfo
+import com.vtbvita.widget.model.ConfirmationData
 import com.vtbvita.widget.nlp.ContactCandidate
 import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.nlp.ContactMemory
-import com.vtbvita.widget.ui.components.OmegaSheetHeader
+import com.vtbvita.widget.ui.components.OmegaButton
+import com.vtbvita.widget.ui.components.OmegaButtonStyle
+import com.vtbvita.widget.ui.components.OmegaSheetScaffold
 import com.vtbvita.widget.ui.components.OmegaTextField
+import com.vtbvita.widget.ui.components.OmegaWarningCard
+import com.vtbvita.widget.ui.components.SbpRow
 import com.vtbvita.widget.ui.components.SuccessAction
 import com.vtbvita.widget.ui.components.TransferDetailsSheet
+import com.vtbvita.widget.ui.components.TransferSummary
 import com.vtbvita.widget.ui.components.OmegaSuccessScreen
+import com.vtbvita.widget.ui.components.formatRub
 import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
 import com.vtbvita.widget.ui.theme.OmegaChip
-import com.vtbvita.widget.ui.theme.OmegaScrim
-import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaError
+import com.vtbvita.widget.ui.theme.OmegaSpacing
 import com.vtbvita.widget.ui.theme.OmegaTextPrimary
 import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.OmegaType
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * Единый модал для флоу перевода через NLP.
- *
- * Внутренняя навигация (Compose state):
- *   ContactSelection → (выбор контакта) → Confirmation
- *   Confirmation     → (back)            → ContactSelection
- *   ContactSelection → (back)            → finish()
- */
 class TransferFlowActivity : ComponentActivity() {
 
     sealed class Screen {
@@ -62,9 +61,19 @@ class TransferFlowActivity : ComponentActivity() {
             val amount: Double?
         ) : Screen()
 
-        data class Confirmation(
+        data class TransferSetup(
             val contact: ContactCandidate,
             val amount: Double?,
+            val candidates: List<ContactCandidate>,
+            val recipientRaw: String
+        ) : Screen()
+
+        data class TransferConfirm(
+            val contact: ContactCandidate,
+            val data: ConfirmationData,
+            val selectedAcc: AccountInfo?,
+            val bank: String,
+            val comment: String,
             val candidates: List<ContactCandidate>,
             val recipientRaw: String
         ) : Screen()
@@ -72,7 +81,9 @@ class TransferFlowActivity : ComponentActivity() {
         data class Success(
             val contact: ContactCandidate,
             val amount: Double,
-            val statusMsg: String
+            val statusMsg: String,
+            val selectedAcc: AccountInfo? = null,
+            val comment: String = ""
         ) : Screen()
     }
 
@@ -113,7 +124,7 @@ class TransferFlowActivity : ComponentActivity() {
         val autoContact = pendingAutoContact
 
         val initialScreen: Screen = if (startConfirmed && autoContact != null) {
-            Screen.Confirmation(autoContact, amount, candidates, recipientRaw)
+            Screen.TransferSetup(autoContact, amount, candidates, recipientRaw)
         } else {
             Screen.ContactSelection(candidates, recipientRaw, amount)
         }
@@ -122,11 +133,14 @@ class TransferFlowActivity : ComponentActivity() {
             VTBVitaTheme {
                 var screen by remember { mutableStateOf<Screen>(initialScreen) }
 
-                BackHandler(enabled = screen is Screen.Confirmation) {
-                    val s = screen as Screen.Confirmation
+                BackHandler(enabled = screen is Screen.TransferSetup) {
+                    val s = screen as Screen.TransferSetup
                     screen = Screen.ContactSelection(s.candidates, s.recipientRaw, s.amount)
                 }
-                // На Success-экране back отключён — только кнопка «На главную»
+                BackHandler(enabled = screen is Screen.TransferConfirm) {
+                    val s = screen as Screen.TransferConfirm
+                    screen = Screen.TransferSetup(s.contact, s.data.amount.takeIf { it > 0 }, s.candidates, s.recipientRaw)
+                }
                 BackHandler(enabled = screen is Screen.Success) { /* заблокировано */ }
 
                 when (val s = screen) {
@@ -136,12 +150,12 @@ class TransferFlowActivity : ComponentActivity() {
                             recipientRaw = s.recipientRaw,
                             onContactSelected = { contact ->
                                 ContactMemory.recordPick(s.recipientRaw, contact.phone, this)
-                                screen = Screen.Confirmation(contact, s.amount, s.candidates, s.recipientRaw)
+                                screen = Screen.TransferSetup(contact, s.amount, s.candidates, s.recipientRaw)
                             },
                             onDismiss = { finish() }
                         )
                     }
-                    is Screen.Confirmation -> {
+                    is Screen.TransferSetup -> {
                         TransferDetailsSheet(
                             recipientName = s.contact.displayName,
                             recipientPhone = s.contact.phone,
@@ -150,11 +164,39 @@ class TransferFlowActivity : ComponentActivity() {
                             onDismiss = {
                                 screen = Screen.ContactSelection(s.candidates, s.recipientRaw, s.amount)
                             },
+                            onClose = { finish() },
+                            onProceed = { data, selectedAcc, bank, comment ->
+                                screen = Screen.TransferConfirm(
+                                    contact = s.contact,
+                                    data = data,
+                                    selectedAcc = selectedAcc,
+                                    bank = bank,
+                                    comment = comment,
+                                    candidates = s.candidates,
+                                    recipientRaw = s.recipientRaw
+                                )
+                            }
+                        )
+                    }
+                    is Screen.TransferConfirm -> {
+                        TransferConfirmSheet(
+                            screen = s,
+                            onBack = {
+                                screen = Screen.TransferSetup(
+                                    s.contact,
+                                    s.data.amount.takeIf { it > 0 },
+                                    s.candidates,
+                                    s.recipientRaw
+                                )
+                            },
+                            onClose = { finish() },
                             onSuccess = { msg ->
                                 screen = Screen.Success(
                                     contact = s.contact,
-                                    amount = s.amount ?: 0.0,
-                                    statusMsg = msg
+                                    amount = s.data.amount,
+                                    statusMsg = msg,
+                                    selectedAcc = s.selectedAcc,
+                                    comment = s.comment
                                 )
                             }
                         )
@@ -165,9 +207,18 @@ class TransferFlowActivity : ComponentActivity() {
                             subtitle = "По номеру телефона · ${s.contact.displayName}",
                             amount = s.amount,
                             actions = listOf(
-                                SuccessAction("🧾", "Получить чек"),
-                                SuccessAction("🔁", "Создать шаблон"),
+                                SuccessAction(R.drawable.ic_receipt, "Получить чек"),
+                                SuccessAction(R.drawable.ic_bookmark_plus, "Создать шаблон"),
                             ),
+                            content = if (s.selectedAcc != null) ({
+                                val balanceAfter = s.selectedAcc.balance - s.amount
+                                TransferSummary(
+                                    accountName = s.selectedAcc.name,
+                                    accountMask = s.selectedAcc.masked,
+                                    balanceAfter = balanceAfter,
+                                    comment = s.comment
+                                )
+                            }) else null,
                             onDone = {
                                 VitaWidgetProvider.showStatus(applicationContext, s.statusMsg)
                                 finish()
@@ -176,6 +227,93 @@ class TransferFlowActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+}
+
+// ── TransferConfirmSheet ─────────────────────────────────────────────────────
+
+@Composable
+private fun TransferConfirmSheet(
+    screen: TransferFlowActivity.Screen.TransferConfirm,
+    onBack: () -> Unit,
+    onClose: () -> Unit,
+    onSuccess: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val data = screen.data
+    val amount = data.amount
+    val selectedAcc = screen.selectedAcc
+    val balanceAfter = (selectedAcc?.balance ?: 0.0) - amount
+
+    OmegaSheetScaffold(
+        title = "Подтверждение",
+        onDismiss = onBack,
+        onBack = onBack,
+        onClose = onClose,
+        footer = {
+            if (error != null) {
+                Text(
+                    error!!,
+                    color = OmegaError,
+                    style = OmegaType.BodyTightS,
+                    modifier = Modifier.padding(bottom = OmegaSpacing.sm)
+                )
+            }
+            OmegaButton(
+                text = "Перевести ${formatRub(amount)}",
+                isLoading = isLoading,
+                enabled = !isLoading,
+                style = OmegaButtonStyle.Brand,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    isLoading = true; error = null
+                    scope.launch {
+                        runCatching {
+                            MockApiService.confirm(
+                                transactionId = data.transactionId,
+                                sourceAccountId = selectedAcc?.id ?: data.defaultAccountId,
+                                selectedBank = screen.bank,
+                                context = context
+                            )
+                        }.onSuccess { result ->
+                            onSuccess("✓ ${result.message}")
+                        }.onFailure { e ->
+                            error = e.message ?: "Ошибка"; isLoading = false
+                        }
+                    }
+                }
+            )
+        }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(OmegaSpacing.sm)) {
+            Text(
+                text = formatRub(amount),
+                style = OmegaType.DisplayL,
+                color = OmegaTextPrimary
+            )
+
+            OmegaWarningCard(
+                text = "Проверьте данные перед отправкой. Отменить перевод после подтверждения невозможно."
+            )
+
+            TransferSummary(
+                accountName = selectedAcc?.name ?: data.defaultAccountId,
+                accountMask = selectedAcc?.masked ?: "",
+                balanceAfter = balanceAfter,
+                comment = screen.comment
+            )
+
+            val isPhoneTransfer = screen.contact.phone.isNotBlank()
+            if (isPhoneTransfer) {
+                SbpRow()
+            }
+
+            Spacer(Modifier.height(OmegaSpacing.xs))
         }
     }
 }
@@ -212,100 +350,78 @@ private fun ContactSelectionSheet(
 
     val displayedCandidates = searchResults ?: candidates
 
-    // Dim overlay
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(OmegaScrim)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            ),
-        contentAlignment = Alignment.BottomCenter
+    OmegaSheetScaffold(
+        title = "Кому переводим?",
+        onDismiss = onDismiss,
+        onBack = null,
+        onClose = onDismiss
     ) {
-        // Sheet
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(OmegaSurface)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { }
-        ) {
-            OmegaSheetHeader(title = "Кому переводим?")
-
-            // Поиск
-            OmegaTextField(
-                value = searchText,
-                onValueChange = { searchText = it },
-                label = "",
-                placeholder = "Поиск по контактам",
-                modifier = Modifier.padding(horizontal = 16.dp),
-                trailingContent = {
-                    if (isSearching) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = OmegaTextSecondary
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_magnifier),
-                            contentDescription = null,
-                            tint = OmegaTextSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+        OmegaTextField(
+            value = searchText,
+            onValueChange = { searchText = it },
+            label = "",
+            placeholder = "Поиск по контактам",
+            trailingContent = {
+                if (isSearching) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = OmegaTextSecondary
+                    )
+                } else {
+                    Icon(
+                        painter = androidx.compose.ui.res.painterResource(R.drawable.ic_magnifier),
+                        contentDescription = null,
+                        tint = OmegaTextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                modifier = Modifier.heightIn(min = 280.dp, max = 440.dp)
-            ) {
-                when {
-                    displayedCandidates.isEmpty() && searchText.isNotBlank() && !isSearching -> {
-                        item {
-                            Text(
-                                "Контакты не найдены",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = OmegaTextSecondary,
-                                modifier = Modifier.padding(vertical = 20.dp)
-                            )
-                        }
-                    }
-                    displayedCandidates.isEmpty() && searchText.isBlank() -> {
-                        item {
-                            Text(
-                                "Начните вводить имя",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = OmegaTextSecondary,
-                                modifier = Modifier.padding(vertical = 20.dp)
-                            )
-                        }
-                    }
-                    else -> {
-                        items(displayedCandidates) { candidate ->
-                            val picks = if (searchText.isBlank()) {
-                                pickCounts[candidate.phone] ?: 0
-                            } else {
-                                candidate.pickCount
-                            }
-                            ContactCandidateRow(
-                                candidate = candidate,
-                                pickCount = picks,
-                                onClick = { onContactSelected(candidate) }
-                            )
-                        }
-                    }
-                }
-                item { Spacer(Modifier.height(16.dp)) }
             }
+        )
+
+        Spacer(Modifier.height(OmegaSpacing.sm))
+
+        LazyColumn(
+            contentPadding = PaddingValues(vertical = OmegaSpacing.xs),
+            modifier = Modifier.heightIn(min = 280.dp, max = 440.dp)
+        ) {
+            when {
+                displayedCandidates.isEmpty() && searchText.isNotBlank() && !isSearching -> {
+                    item {
+                        Text(
+                            "Контакты не найдены",
+                            style = OmegaType.BodyM,
+                            color = OmegaTextSecondary,
+                            modifier = Modifier.padding(vertical = OmegaSpacing.xl)
+                        )
+                    }
+                }
+                displayedCandidates.isEmpty() && searchText.isBlank() -> {
+                    item {
+                        Text(
+                            "Начните вводить имя",
+                            style = OmegaType.BodyM,
+                            color = OmegaTextSecondary,
+                            modifier = Modifier.padding(vertical = OmegaSpacing.xl)
+                        )
+                    }
+                }
+                else -> {
+                    items(displayedCandidates) { candidate ->
+                        val picks = if (searchText.isBlank()) {
+                            pickCounts[candidate.phone] ?: 0
+                        } else {
+                            candidate.pickCount
+                        }
+                        ContactCandidateRow(
+                            candidate = candidate,
+                            pickCount = picks,
+                            onClick = { onContactSelected(candidate) }
+                        )
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(OmegaSpacing.lg)) }
         }
     }
 }
@@ -320,10 +436,9 @@ private fun ContactCandidateRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
+            .padding(vertical = OmegaSpacing.md + OmegaSpacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Аватар-инициалы — тёмный chip стиль ВТБ
         Box(
             modifier = Modifier
                 .size(44.dp)
@@ -339,18 +454,17 @@ private fun ContactCandidateRow(
             )
         }
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(OmegaSpacing.md))
 
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     candidate.displayName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = OmegaTextPrimary,
-                    fontWeight = FontWeight.Medium
+                    style = OmegaType.BodySemiBoldL,
+                    color = OmegaTextPrimary
                 )
                 if (pickCount > 0) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(OmegaSpacing.xs + OmegaSpacing.xxs))
                     Text(
                         text = if (pickCount >= ContactMemory.AUTO_RESOLVE_AT) "★" else "↑",
                         fontSize = 11.sp,
@@ -360,7 +474,7 @@ private fun ContactCandidateRow(
             }
             Text(
                 ContactMatcher.maskPhone(candidate.phone),
-                style = MaterialTheme.typography.bodySmall,
+                style = OmegaType.BodyTightM,
                 color = OmegaTextSecondary
             )
         }

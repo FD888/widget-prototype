@@ -6,26 +6,26 @@
     android:clipChildren="false"
     android:clipToPadding="false">
 
-    <!-- Фон капсулы: статичный gradient или динамическая aurora bitmap -->
+    <!-- Фон капсулы: OmegaSurface + brand stroke 2dp -->
     <ImageView
         android:id="@+id/capsule_bg"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="68dp"
         android:layout_gravity="center_vertical"
         android:scaleType="fitXY"
-        android:src="@drawable/widget_bg" />
+        android:src="@drawable/widget_pill_bg" />
 
     <LinearLayout
         android:id="@+id/capsule"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="68dp"
         android:layout_gravity="center_vertical"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingStart="14dp"
-        android:paddingEnd="8dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="12dp">
 
         <!-- ── IDLE ─────────────────────────────────────────── -->
 
@@ -39,14 +39,24 @@ android:text="@string/widget_prompt"
             android:textColor="#FFFFFFFF"
             android:textSize="17sp" />
 
+        <!-- ── SUCCESS — чекмарк ─────────────────────────────────── -->
+
+        <ImageView
+            android:id="@+id/iv_status_check"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="6dp"
+            android:src="@drawable/ic_success_check"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/tv_status"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-android:gravity="center"
+            android:gravity="center"
             android:textColor="#FFFFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:visibility="gone" />
 
         <!-- ── RECORDING — левая кнопка отмены ──────────────── -->
@@ -58,7 +68,8 @@ android:gravity="center"
             android:background="@drawable/stop_bg"
             android:contentDescription="@null"
             android:padding="10dp"
-            android:src="@drawable/ic_close"
+            android:src="@drawable/ic_cross_big"
+            android:tint="@color/text_primary"
             android:visibility="gone" />
 
         <!-- ── PREPARING — спиннер ───────────────────────────── -->
@@ -80,13 +91,13 @@ android:gravity="center"
             android:id="@+id/tv_recording_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_marginStart="16dp"
             android:layout_weight="1"
-            android:alpha="0.85"
+            android:alpha="1.0"
             android:ellipsize="end"
 android:maxLines="2"
             android:textColor="#FFFFFFFF"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:visibility="gone" />
 
         <!-- ── IDLE — кнопка микрофона ───────────────────────── -->
@@ -99,7 +110,8 @@ android:maxLines="2"
             android:background="@drawable/mic_bg"
             android:contentDescription="@null"
             android:padding="10dp"
-            android:src="@drawable/ic_mic" />
+            android:src="@drawable/ic_mic"
+            android:tint="@color/text_primary" />
 
         <!-- ── PREPARING — кнопка отмены (справа) ────────────── -->
 
@@ -111,11 +123,12 @@ android:maxLines="2"
             android:background="@drawable/stop_bg"
             android:contentDescription="@null"
             android:padding="11dp"
-            android:src="@drawable/ic_close"
+            android:src="@drawable/ic_cross_big"
+            android:tint="@color/text_primary"
             android:visibility="gone" />
 
         <!-- ── RECORDING — контейнер с кольцами + кнопка ✓ ─── -->
-        <!-- 80dp×80dp: переполняет 64dp-капсулу на 8dp сверху/снизу
+        <!-- 80dp×80dp: переполняет 72dp-капсулу на 4dp сверху/снизу
              clipChildren=false позволяет кольцам быть видимыми снаружи -->
 
         <FrameLayout
@@ -169,7 +182,8 @@ android:maxLines="2"
                 android:background="@drawable/submit_bg"
                 android:contentDescription="@null"
                 android:padding="12dp"
-                android:src="@drawable/ic_arrow_up" />
+                android:src="@drawable/ic_arrow_big_top"
+                android:tint="@color/text_primary" />
 
         </FrameLayout>
 

@@ -27,6 +27,7 @@ import com.vtbvita.widget.ui.theme.OmegaTextDisabled
 import com.vtbvita.widget.ui.theme.OmegaTextHint
 import com.vtbvita.widget.ui.theme.OmegaTextPrimary
 import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.OmegaRadius
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 import kotlinx.coroutines.launch
 
@@ -133,7 +134,7 @@ fun PhoneVerificationScreen(onSuccess: (String) -> Unit) {
                     unfocusedBorderColor = OmegaTextDisabled,
                     cursorColor = OmegaTextPrimary,
                 ),
-                shape = RoundedCornerShape(12.dp),
+                shape = OmegaRadius.md,
                 modifier = Modifier.fillMaxWidth()
             )
 

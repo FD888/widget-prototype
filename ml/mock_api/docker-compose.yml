@@ -11,3 +11,5 @@ services:
       - ./data:/data
     environment:
       DB_PATH: /data/vita.db
+      DASHBOARD_USER: vita
+      DASHBOARD_PASS: vtb2026

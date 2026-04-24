@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>VTB Vita — Подсказки</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2230;
+    --border: #30363d;
+    --vtb: #005b96;
+    --vtb-light: #1a7abf;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --orange: #f78166;
+    --purple: #bc8cff;
+    --yellow: #e3b341;
+    --text: #e6edf3;
+    --muted: #7d8590;
+    --card-radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-mark {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--vtb);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 16px; color: #fff; letter-spacing: -0.5px;
+  }
+  .logo-text { font-size: 18px; font-weight: 600; }
+  .logo-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+  .tab-bar { display: flex; gap: 4px; background: var(--surface2); border-radius: 8px; padding: 3px; }
+  .tab {
+    padding: 7px 16px; border-radius: 6px; font-size: 13px; font-weight: 500;
+    color: var(--muted); cursor: pointer; text-decoration: none; transition: all 0.15s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--vtb); color: #fff; }
+
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .live-badge {
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 24px 48px; }
+
+  h2 { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 16px; }
+
+  /* Sub-tabs */
+  .sub-tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+  .sub-tab {
+    padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 500;
+    color: var(--muted); cursor: pointer; background: var(--surface);
+    border: 1px solid var(--border); transition: all 0.15s;
+  }
+  .sub-tab:hover { color: var(--text); border-color: var(--accent); }
+  .sub-tab.active { background: var(--vtb); color: #fff; border-color: var(--vtb); }
+
+  /* Search */
+  .search-box {
+    display: flex; gap: 12px; margin-bottom: 24px;
+  }
+  .search-input {
+    flex: 1; padding: 12px 16px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); font-size: 14px; outline: none;
+    transition: border-color 0.15s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+  .btn {
+    padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500;
+    cursor: pointer; border: none; transition: all 0.15s;
+  }
+  .btn-primary { background: var(--vtb); color: #fff; }
+  .btn-primary:hover { background: var(--vtb-light); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .btn-danger { background: #3d1f1f; color: var(--orange); border: 1px solid #5c2e2e; }
+  .btn-danger:hover { background: #4d2525; }
+  .btn-small { padding: 6px 14px; font-size: 12px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* User list cards */
+  .user-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); padding: 20px 24px;
+    margin-bottom: 12px; cursor: pointer; transition: border-color 0.15s;
+  }
+  .user-card:hover { border-color: var(--accent); }
+  .user-card.active { border-color: var(--vtb-light); background: var(--surface2); }
+  .user-card-header { display: flex; align-items: center; justify-content: space-between; }
+  .user-card-name { font-size: 15px; font-weight: 600; }
+  .user-card-id { font-size: 12px; color: var(--muted); margin-left: 8px; }
+  .user-card-meta { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .user-card-segment {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px;
+    background: rgba(88,166,255,0.12); color: var(--accent); font-weight: 500; margin-left: 8px;
+  }
+  .hint-preview {
+    margin-top: 12px; padding: 10px 14px; border-radius: 8px;
+    background: var(--surface2); border-left: 3px solid var(--muted);
+    font-size: 13px; line-height: 1.5;
+  }
+  .hint-preview.reminder { border-left-color: var(--yellow); }
+  .hint-preview.vygoda { border-left-color: var(--green); }
+  .hint-preview.custom { border-left-color: var(--purple); }
+  .hint-preview.none { border-left-color: var(--muted); opacity: 0.6; }
+  .hint-type-badge {
+    display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 3px; margin-right: 6px; letter-spacing: 0.5px;
+  }
+  .hint-type-badge.reminder { background: rgba(227,179,65,0.2); color: var(--yellow); }
+  .hint-type-badge.vygoda { background: rgba(63,185,80,0.2); color: var(--green); }
+  .hint-type-badge.custom { background: rgba(188,140,255,0.2); color: var(--purple); }
+  .hint-type-badge.none { background: rgba(125,133,144,0.2); color: var(--muted); }
+  .widget-text-label {
+    font-size: 10px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 4px;
+  }
+
+  /* Detail panel */
+  .detail-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); padding: 28px; margin-top: 20px;
+  }
+  .detail-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .detail-grid { display: grid; grid-template-columns: 280px 1fr; gap: 24px; }
+  @media (max-width: 800px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .form-group { margin-bottom: 16px; }
+  .form-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  .form-select, .form-input, .form-textarea {
+    width: 100%; padding: 10px 12px; border-radius: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-size: 14px; outline: none; transition: border-color 0.15s;
+  }
+  .form-select:focus, .form-input:focus, .form-textarea:focus { border-color: var(--accent); }
+  .form-textarea { min-height: 60px; resize: vertical; font-family: inherit; }
+  .form-select option { background: var(--surface2); }
+
+  .checkbox-group { display: flex; flex-direction: column; gap: 10px; }
+  .checkbox-label {
+    display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;
+  }
+  .checkbox-label input[type="checkbox"] {
+    width: 18px; height: 18px; accent-color: var(--vtb-light); cursor: pointer;
+  }
+
+  .current-hint-box {
+    padding: 16px; border-radius: 8px; background: var(--surface2);
+    border: 1px solid var(--border); margin-bottom: 20px;
+  }
+  .current-hint-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .current-hint-text { font-size: 15px; line-height: 1.5; }
+
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+
+  /* Segment rules (draft) */
+  .segment-rules { margin-top: 8px; }
+  .segment-rule-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--card-radius); padding: 18px 22px;
+    margin-bottom: 12px; opacity: 0.7; position: relative;
+  }
+  .segment-rule-card::after {
+    content: 'ЧЕРНОВИК'; position: absolute; top: 12px; right: 16px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 2px 8px; border-radius: 3px;
+    background: rgba(227,179,65,0.15); color: var(--yellow);
+  }
+  .segment-rule-name { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .segment-rule-desc { font-size: 13px; color: var(--muted); line-height: 1.4; }
+  .segment-rule-condition { font-size: 12px; font-family: monospace; color: var(--accent); margin-top: 4px; }
+  .add-rule-btn {
+    background: var(--surface2); border: 2px dashed var(--border);
+    border-radius: var(--card-radius); padding: 24px; text-align: center;
+    color: var(--muted); cursor: not-allowed; font-size: 14px;
+  }
+  .draft-notice {
+    font-size: 12px; color: var(--muted); margin-top: 20px;
+    padding: 12px 16px; background: rgba(227,179,65,0.08); border-radius: 8px;
+    border-left: 3px solid var(--yellow); line-height: 1.5;
+  }
+
+  .override-indicator {
+    display: inline-block; font-size: 10px; font-weight: 600;
+    padding: 2px 6px; border-radius: 3px; margin-left: 8px;
+    background: rgba(88,166,255,0.15); color: var(--accent);
+  }
+
+  .loading { color: var(--muted); font-size: 14px; text-align: center; padding: 48px; }
+  .err { color: var(--orange); font-size: 13px; padding: 12px; background: rgba(247,129,102,.1); border-radius: 8px; }
+  .success-msg { color: var(--green); font-size: 13px; padding: 8px 12px; background: rgba(63,185,80,.1); border-radius: 6px; margin-bottom: 12px; }
+
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-mark">V</div>
+    <div>
+      <div class="logo-text">VTB Vita</div>
+      <div class="logo-sub">Hints Management</div>
+    </div>
+  </div>
+  <div class="tab-bar">
+    <a class="tab" href="/dashboard">Analytics</a>
+    <a class="tab active" href="/dashboard/hints">Подсказки</a>
+  </div>
+  <div class="header-right">
+    <div class="live-badge">
+      <span class="dot"></span>
+      <span id="refresh-label">Live</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="sub-tabs">
+    <div class="sub-tab active" data-tab="users" onclick="switchTab('users')">Пользователи</div>
+    <div class="sub-tab" data-tab="segments" onclick="switchTab('segments')">Сегментные правила</div>
+  </div>
+
+  <div id="users-tab">
+    <h2>Поиск пользователя</h2>
+    <div class="search-box">
+      <input type="text" class="search-input" id="searchInput" placeholder="Введите имя, ID или сегмент..." oninput="debounceSearch()"/>
+    </div>
+
+    <h2>Найденные пользователи</h2>
+    <div id="userList"><div class="loading">Загрузка...</div></div>
+
+    <div id="detailPanel" style="display:none;"></div>
+  </div>
+
+  <div id="segments-tab" style="display:none;">
+    <h2>Сегментные правила</h2>
+    <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
+      Правила позволяют задавать подсказки для групп пользователей по критериям: сегмент, возраст, зарплатный клиент и другим параметрам.
+    </p>
+    <div id="segmentRules"></div>
+    <div class="add-rule-btn">+ Добавить правило — в разработке</div>
+    <div class="draft-notice">
+      Сегментные правила пока в разработке. Создание и редактирование правил недоступно.<br/>
+      Отображаются предзаполнённые черновики для демонстрации.
+    </div>
+  </div>
+</main>
+
+<script>
+let currentData = [];
+let selectedUserId = null;
+let searchTimer = null;
+
+const HINT_TYPES = {
+  auto: { label: 'Авто', color: 'var(--accent)' },
+  reminder: { label: 'Напоминание', color: 'var(--yellow)' },
+  vygoda: { label: 'ВЫГОДА', color: 'var(--green)' },
+  custom: { label: 'Кастом', color: 'var(--purple)' },
+  neutral: { label: 'Нейтральная', color: 'var(--muted)' },
+  none: { label: 'Нет', color: 'var(--muted)' },
+};
+
+async function loadData(query) {
+  try {
+    const url = query && query.trim()
+      ? '/dashboard/hints/api/search?q=' + encodeURIComponent(query.trim())
+      : '/dashboard/hints/api';
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(r.status);
+    currentData = await r.json();
+    renderUserList();
+  } catch(e) {
+    document.getElementById('userList').innerHTML = '<div class="err">Ошибка загрузки: ' + e.message + '</div>';
+  }
+}
+
+function debounceSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    loadData(document.getElementById('searchInput').value);
+  }, 300);
+}
+
+function renderUserList() {
+  const el = document.getElementById('userList');
+  if (!currentData.length) {
+    el.innerHTML = '<div style="color:var(--muted);text-align:center;padding:24px;">Пользователи не найдены</div>';
+    return;
+  }
+  el.innerHTML = currentData.map(u => {
+    const hint = u.current_hint || {};
+    const ht = hint.type || 'none';
+    const htInfo = HINT_TYPES[ht] || HINT_TYPES.none;
+    const hasOverride = u.override && u.override.hint_type !== 'auto';
+    const wt = hint.widget_text;
+    let previewText = '';
+    if (wt) previewText = wt;
+    else if (ht === 'reminder') previewText = hint.name ? `${hint.name} — ${hint.label} · ${Number(hint.amount).toLocaleString('ru-RU')} ₽` : 'Нет активного напоминания';
+    else if (ht === 'vygoda') previewText = hint.offer_text || 'Нет активного оффера';
+    else previewText = 'Нейтральная фраза';
+    const segment = u.segment || '';
+    const age = u.age || '';
+    const salary = u.is_salary_client ? 'Зарплатный' : '';
+    return `<div class="user-card ${selectedUserId === u.user_id ? 'active' : ''}" onclick="selectUser('${u.user_id}')">
+      <div class="user-card-header">
+        <div>
+          <span class="user-card-name">${u.full_name || u.display_name}</span>
+          <span class="user-card-id">${u.user_id}</span>
+          ${hasOverride ? '<span class="override-indicator">Override</span>' : ''}
+        </div>
+        <span class="hint-type-badge ${ht}">${htInfo.label}</span>
+      </div>
+      <div class="user-card-meta">
+        ${[segment, age ? age + ' лет' : '', salary].filter(Boolean).join(' · ')}
+      </div>
+      <div class="hint-preview ${ht}">
+        ${previewText}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function selectUser(userId) {
+  selectedUserId = userId;
+  renderUserList();
+  try {
+    const r = await fetch('/dashboard/hints/api/' + encodeURIComponent(userId));
+    if (!r.ok) throw new Error(r.status);
+    const detail = await r.json();
+    renderDetail(detail);
+  } catch(e) {
+    document.getElementById('detailPanel').innerHTML = '<div class="err">Ошибка: ' + e.message + '</div>';
+    document.getElementById('detailPanel').style.display = 'block';
+  }
+}
+
+function renderDetail(d) {
+  const hint = d.current_hint || {};
+  const ht = hint.type || 'none';
+  const htInfo = HINT_TYPES[ht] || HINT_TYPES.none;
+  const override = d.override || {};
+  const overrideType = override.hint_type || 'auto';
+  const reminderEnabled = override.reminder_enabled !== undefined ? (override.reminder_enabled === 1 || override.reminder_enabled === true) : true;
+  const vygodaEnabled = override.vygoda_enabled !== undefined ? (override.vygoda_enabled === 1 || override.vygoda_enabled === true) : true;
+
+  const wt = hint.widget_text;
+  let previewText = '';
+  if (wt) previewText = wt;
+  else if (ht === 'reminder') previewText = hint.name ? `${hint.name} — ${hint.label} · ${Number(hint.amount).toLocaleString('ru-RU')} ₽` : 'Нет напоминания';
+  else if (ht === 'vygoda') previewText = hint.offer_text || 'Нет оффера';
+  else previewText = 'Нейтральная фраза';
+
+  const offers = d.available_offers || [];
+  const payments = d.available_payments || [];
+  const products = (d.active_products || []).join(', ') || 'нет';
+
+  let offerOptions = '<option value="">— Авто (из пула) —</option>';
+  offers.forEach(o => {
+    const avail = o.available ? '' : ' (недоступен)';
+    const sel = override.forced_offer_id === o.offer_id ? ' selected' : '';
+    offerOptions += `<option value="${o.offer_id}"${sel}>${o.label}${avail}</option>`;
+  });
+
+  let paymentOptions = '<option value="">— Авто (ближайший) —</option>';
+  payments.forEach(p => {
+    const sel = override.forced_payment_id === p.payment_id ? ' selected' : '';
+    paymentOptions += `<option value="${p.payment_id}"${sel}>${p.name} · ${Number(p.amount).toLocaleString('ru-RU')} ₽ (${p.payment_type})</option>`;
+  });
+
+  document.getElementById('detailPanel').style.display = 'block';
+  document.getElementById('detailPanel').innerHTML = `
+    <div class="detail-panel">
+      <div class="detail-title">${d.full_name} — Настройки подсказок</div>
+
+      <div class="current-hint-box">
+        <div class="current-hint-label">Текст на виджете телефона</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <span class="hint-type-badge ${ht}">${htInfo.label}</span>
+          ${overrideType !== 'auto' ? '<span class="override-indicator">Override</span>' : '<span style="font-size:11px;color:var(--muted)">авторежим</span>'}
+        </div>
+        <div class="current-hint-text" style="font-size:16px;font-weight:500;">${previewText}</div>
+      </div>
+
+      <div id="saveStatus"></div>
+
+      <div class="form-group">
+        <label class="form-label">Режим подсказки</label>
+        <select class="form-select" id="hintTypeSelect" onchange="onHintTypeChange()">
+          <option value="auto" ${overrideType === 'auto' ? 'selected' : ''}>Авто (по приоритету: напоминание → выгода)</option>
+          <option value="reminder" ${overrideType === 'reminder' ? 'selected' : ''}>Напоминание</option>
+          <option value="vygoda" ${overrideType === 'vygoda' ? 'selected' : ''}>ВЫГОДА</option>
+          <option value="none" ${overrideType === 'none' ? 'selected' : ''}>Отключить подсказку</option>
+        </select>
+      </div>
+
+      <div id="autoControls" style="display:${overrideType === 'auto' ? 'block' : 'none'}">
+        <div class="form-group">
+          <label class="form-label">Включённые типы (в режиме Авто)</label>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="reminderEnabled" ${reminderEnabled ? 'checked' : ''}/>
+              Напоминания включены
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="vygodaEnabled" ${vygodaEnabled ? 'checked' : ''}/>
+              ВЫГОДА включена
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div id="reminderControls" style="display:${overrideType === 'reminder' ? 'block' : 'none'}">
+        <div class="form-group">
+          <label class="form-label">Конкретный платёж</label>
+          <select class="form-select" id="forcedPaymentId">
+            ${paymentOptions}
+          </select>
+        </div>
+      </div>
+
+      <div id="vygodaControls" style="display:${overrideType === 'vygoda' ? 'block' : 'none'}">
+        <div class="form-group">
+          <label class="form-label">Конкретный оффер</label>
+          <select class="form-select" id="forcedOfferId">
+            ${offerOptions}
+          </select>
+        </div>
+      </div>
+
+      <div id="customTextBlock" style="display:${overrideType !== 'auto' ? 'block' : 'none'}">
+        <div class="form-group">
+          <label class="form-label">Кастомный текст (перекрывает авто)</label>
+          <textarea class="form-textarea" id="customText" placeholder="Оставьте пустым для автотекста...">${override.custom_text || ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Кастомная кнопка CTA</label>
+          <input type="text" class="form-input" id="customCta" placeholder="Например: Оформить →" value="${override.custom_cta || ''}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Кастомное действие (deep link)</label>
+          <input type="text" class="form-input" id="customAction" placeholder="Например: open_deposit" value="${override.custom_action || ''}"/>
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:var(--muted);margin-top:12px;">
+        Активные продукты: ${products} · Сегмент: ${d.segment || '—'} · Возраст: ${d.age || '—'}
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="saveOverride()">Сохранить</button>
+        <button class="btn btn-danger btn-small" onclick="deleteOverride()">Сбросить к auto</button>
+        <button class="btn btn-secondary btn-small" onclick="selectUser('${d.user_id}')">Обновить</button>
+      </div>
+    </div>
+  `;
+}
+
+function onHintTypeChange() {
+  const val = document.getElementById('hintTypeSelect').value;
+  document.getElementById('autoControls').style.display = val === 'auto' ? 'block' : 'none';
+  document.getElementById('reminderControls').style.display = val === 'reminder' ? 'block' : 'none';
+  document.getElementById('vygodaControls').style.display = val === 'vygoda' ? 'block' : 'none';
+  document.getElementById('customTextBlock').style.display = val !== 'auto' ? 'block' : 'none';
+}
+
+async function saveOverride() {
+  if (!selectedUserId) return;
+  const hintType = document.getElementById('hintTypeSelect').value;
+  const body = {
+    hint_type: hintType,
+    reminder_enabled: document.getElementById('reminderEnabled')?.checked ?? true,
+    vygoda_enabled: document.getElementById('vygodaEnabled')?.checked ?? true,
+    forced_offer_id: document.getElementById('forcedOfferId')?.value || null,
+    forced_payment_id: document.getElementById('forcedPaymentId')?.value || null,
+    custom_text: document.getElementById('customText')?.value || null,
+    custom_cta: document.getElementById('customCta')?.value || null,
+    custom_action: document.getElementById('customAction')?.value || null,
+  };
+  try {
+    const r = await fetch('/dashboard/hints/api/' + encodeURIComponent(selectedUserId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(r.status);
+    const result = await r.json();
+    document.getElementById('saveStatus').innerHTML = '<div class="success-msg">Сохранено</div>';
+    setTimeout(() => { document.getElementById('saveStatus').innerHTML = ''; }, 2000);
+    await selectUser(selectedUserId);
+    await loadData(document.getElementById('searchInput').value);
+  } catch(e) {
+    document.getElementById('saveStatus').innerHTML = '<div class="err">Ошибка: ' + e.message + '</div>';
+  }
+}
+
+async function deleteOverride() {
+  if (!selectedUserId) return;
+  try {
+    const r = await fetch('/dashboard/hints/api/' + encodeURIComponent(selectedUserId), { method: 'DELETE' });
+    if (!r.ok && r.status !== 404) throw new Error(r.status);
+    document.getElementById('saveStatus').innerHTML = '<div class="success-msg">Сброшено к auto</div>';
+    setTimeout(() => { document.getElementById('saveStatus').innerHTML = ''; }, 2000);
+    await selectUser(selectedUserId);
+    await loadData(document.getElementById('searchInput').value);
+  } catch(e) {
+    document.getElementById('saveStatus').innerHTML = '<div class="err">Ошибка: ' + e.message + '</div>';
+  }
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.sub-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('users-tab').style.display = tab === 'users' ? 'block' : 'none';
+  document.getElementById('segments-tab').style.display = tab === 'segments' ? 'block' : 'none';
+}
+
+function renderSegmentRules() {
+  const rules = [
+    {
+      name: 'Зарплатные клиенты → Вклад',
+      condition: 'is_salary_client = true',
+      type: 'vygoda',
+      offer: 'deposit_3m',
+    },
+    {
+      name: 'Возраст 30+ → ИИС',
+      condition: 'age >= 30 AND segment != "student"',
+      type: 'vygoda',
+      offer: 'iis',
+    },
+    {
+      name: 'Просроченные платежи → Напоминание',
+      condition: 'has_overdue_payment = true',
+      type: 'reminder',
+      offer: null,
+    },
+  ];
+  const container = document.getElementById('segmentRules');
+  container.innerHTML = rules.map(r => `
+    <div class="segment-rule-card">
+      <div class="segment-rule-name">${r.name}</div>
+      <div class="segment-rule-desc">Тип: <span class="hint-type-badge ${r.type}">${HINT_TYPES[r.type].label}</span>${r.offer ? ' · Оффер: ' + r.offer : ''}</div>
+      <div class="segment-rule-condition">${r.condition}</div>
+    </div>
+  `).join('');
+}
+
+loadData();
+renderSegmentRules();
+</script>
+</body>
+</html>

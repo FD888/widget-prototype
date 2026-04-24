@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vtbvita.widget.ui.theme.OmegaBrandGradientH
 import androidx.compose.ui.unit.sp
+import com.vtbvita.widget.ui.theme.OmegaRadius
 import com.vtbvita.widget.ui.theme.OmegaTextPrimary
 import com.vtbvita.widget.ui.theme.OmegaTextSecondary
 import com.vtbvita.widget.ui.theme.OmegaType
@@ -34,6 +35,8 @@ data class Persona(
     val description: String,
     val pin: String,
     val widgetPrompt: String,
+    val gender: String = "male",   // "male" | "female"
+    val birthday: String? = null,  // "MM-dd", напр. "03-15"
     val available: Boolean = true
 )
 
@@ -48,6 +51,8 @@ val PERSONAS = listOf(
                 "несколько раз в день.",
         pin = "1111",
         widgetPrompt = "Скинь Коле за пиццу?",
+        gender = "male",
+        birthday = "09-14",
         available = true
     ),
     Persona(
@@ -59,6 +64,8 @@ val PERSONAS = listOf(
                 "напоминания. Опасается, что кто-то увидит баланс на экране.",
         pin = "2222",
         widgetPrompt = "ТТК просрочен, Ольга — оплатить?",
+        gender = "female",
+        birthday = "11-03",
         available = true
     ),
     Persona(
@@ -70,6 +77,8 @@ val PERSONAS = listOf(
                 "Главный страх: «ещё один инструмент, который не приживётся».",
         pin = "3333",
         widgetPrompt = "Вторник — перевести Тамаре 2 000?",
+        gender = "male",
+        birthday = "06-22",
         available = true
     )
 )
@@ -186,7 +195,7 @@ fun PersonaCard(persona: Persona, onClick: () -> Unit) {
             .fillMaxWidth()
             .alpha(alpha)
             .clickable(enabled = persona.available, onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = OmegaRadius.lg,
         colors = CardDefaults.cardColors(containerColor = OmegaTextPrimary.copy(alpha = 0.10f)),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
@@ -230,7 +239,7 @@ fun PersonaCard(persona: Persona, onClick: () -> Unit) {
                         Spacer(Modifier.width(8.dp))
                         Box(
                             modifier = Modifier
-                                .background(OmegaTextPrimary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                .background(OmegaTextPrimary.copy(alpha = 0.2f), OmegaRadius.xs)
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text("скоро", style = OmegaType.BodyTightS, color = OmegaTextSecondary)
@@ -253,7 +262,7 @@ fun PersonaCard(persona: Persona, onClick: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .border(1.dp, OmegaTextPrimary.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                            .border(1.dp, OmegaTextPrimary.copy(alpha = 0.4f), OmegaRadius.sm)
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(

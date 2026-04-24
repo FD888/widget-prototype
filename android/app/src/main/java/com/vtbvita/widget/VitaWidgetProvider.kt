@@ -8,8 +8,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Bitmap
 import android.view.View
 import android.widget.RemoteViews
+import com.vtbvita.widget.personalization.HintRepository
 import com.vtbvita.widget.ui.effects.AuroraRenderer
 import timber.log.Timber
 
@@ -25,14 +27,38 @@ class VitaWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        if (intent.action == Intent.ACTION_USER_PRESENT ||
+            intent.action == Intent.ACTION_SCREEN_ON ||
+            intent.action == "com.vtbvita.widget.ACTION_REFRESH_HINT"
+        ) {
+            val awm = AppWidgetManager.getInstance(context)
+            val ids = awm.getAppWidgetIds(ComponentName(context, VitaWidgetProvider::class.java))
+            onUpdate(context, awm, ids)
+        }
+    }
+
     companion object {
+
+        private const val AURORA_BITMAP_W = 400
+        private const val AURORA_BITMAP_H = 85
+
+        private fun staticAuroraBitmap(context: Context): Bitmap {
+            val density = context.resources.displayMetrics.density
+            val cornerPx = 16f * density * (AURORA_BITMAP_H.toFloat() / (68f * density))
+            return AuroraRenderer.createBitmap(
+                AURORA_BITMAP_W, AURORA_BITMAP_H,
+                timeSec = 0f, amplitude = 0.08f,
+                cornerRadiusPx = cornerPx
+            )
+        }
 
         // ── Состояния виджета ────────────────────────────────────────────────
 
         fun defaultViews(context: Context): RemoteViews =
             RemoteViews(context.packageName, R.layout.widget_vita).apply {
-                // Сброс фона капсулы на статичный градиент (остановка aurora-анимации)
-                setImageViewResource(R.id.capsule_bg, R.drawable.widget_bg)
+                setImageViewBitmap(R.id.capsule_bg, staticAuroraBitmap(context))
                 setViewVisibility(R.id.capsule_bg, View.VISIBLE)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 // IDLE visible
@@ -45,18 +71,20 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 setViewVisibility(R.id.tv_recording_text, View.GONE)
                 setViewVisibility(R.id.btn_stop, View.GONE)
                 setViewVisibility(R.id.fl_recording_submit, View.GONE)
+                setViewVisibility(R.id.iv_status_check, View.GONE)
 
                 val fullyLoggedIn = SessionManager.hasAppToken(context) && SessionManager.isLoggedIn(context)
                 if (fullyLoggedIn) {
-                    val prompt = SessionManager.currentPersona(context)?.widgetPrompt
-                        ?: context.getString(R.string.widget_prompt)
-                    setTextViewText(R.id.tv_prompt, prompt)
-                    setFloat(R.id.tv_prompt, "setAlpha", 0.80f)
+                    val persona = SessionManager.currentPersona(context)
+                    val hint = HintRepository.resolveHint(context, persona)
+                    setTextViewText(R.id.tv_prompt, hint)
+                    setFloat(R.id.tv_prompt, "setAlpha", 0.90f)
                     setFloat(R.id.capsule, "setAlpha", 1.0f)
                     setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                     setViewVisibility(R.id.btn_mic, View.VISIBLE)
                     setOnClickPendingIntent(R.id.tv_prompt, textInputPi(context))
                     setOnClickPendingIntent(R.id.btn_mic, voiceStartPi(context))
+                    HintRepository.fetchAndApply(context)
                 } else {
                     setTextViewText(R.id.tv_prompt, "Войдите в приложение")
                     setFloat(R.id.tv_prompt, "setAlpha", 0.75f)
@@ -71,7 +99,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
         fun showPreparing(context: Context) {
             Timber.d("widget → PREPARING")
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
-                setImageViewResource(R.id.capsule_bg, R.drawable.widget_bg)
+                setImageViewBitmap(R.id.capsule_bg, staticAuroraBitmap(context))
                 setViewVisibility(R.id.capsule_bg, View.VISIBLE)
                 setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
@@ -80,6 +108,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 setViewVisibility(R.id.btn_mic, View.GONE)
                 setViewVisibility(R.id.btn_cancel_rec, View.GONE)
                 setViewVisibility(R.id.fl_recording_submit, View.GONE)
+                setViewVisibility(R.id.iv_status_check, View.GONE)
                 // Показываем PREPARING
                 setViewVisibility(R.id.pb_preparing, View.VISIBLE)
                 setViewVisibility(R.id.tv_recording_text, View.VISIBLE)
@@ -106,6 +135,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 setViewVisibility(R.id.btn_mic, View.GONE)
                 setViewVisibility(R.id.pb_preparing, View.GONE)
                 setViewVisibility(R.id.btn_stop, View.GONE)
+                setViewVisibility(R.id.iv_status_check, View.GONE)
                 // RECORDING
                 setViewVisibility(R.id.btn_cancel_rec, View.VISIBLE)
                 setOnClickPendingIntent(R.id.btn_cancel_rec, voiceStopPi(context))
@@ -133,6 +163,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
 
         /** Скрывает капсулу пока открыт InputActivity (текстовый режим). */
         fun hideWidget(context: Context) {
+            incrementOpenCount(context)
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setViewVisibility(R.id.capsule, View.INVISIBLE)
                 setViewVisibility(R.id.capsule_bg, View.INVISIBLE)
@@ -144,7 +175,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
         fun showStatus(context: Context, text: String) {
             Timber.i("widget → STATUS: %s", text)
             val statusViews = RemoteViews(context.packageName, R.layout.widget_vita).apply {
-                setImageViewResource(R.id.capsule_bg, R.drawable.widget_bg)
+                setImageViewBitmap(R.id.capsule_bg, staticAuroraBitmap(context))
                 setViewVisibility(R.id.capsule_bg, View.VISIBLE)
                 setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
@@ -155,19 +186,49 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 setViewVisibility(R.id.tv_recording_text, View.GONE)
                 setViewVisibility(R.id.btn_stop, View.GONE)
                 setViewVisibility(R.id.fl_recording_submit, View.GONE)
+                setViewVisibility(R.id.iv_status_check, View.VISIBLE)
                 setViewVisibility(R.id.tv_status, View.VISIBLE)
                 setTextViewText(R.id.tv_status, text)
+                setOnClickPendingIntent(R.id.tv_status, textInputPi(context))
+                setOnClickPendingIntent(R.id.iv_status_check, textInputPi(context))
+                setOnClickPendingIntent(R.id.capsule_bg, textInputPi(context))
             }
             updateAll(context, statusViews)
             Handler(Looper.getMainLooper()).postDelayed({
                 updateAll(context, defaultViews(context))
-            }, 10_000L)
+            }, 3_000L)
+        }
+
+        // Подсказка: синхронный кэш в HintRepository + асинхронный запрос к серверу
+
+        fun incrementOpenCount(context: Context) {
+            val prefs = context.getSharedPreferences("vita_hints", 0)
+            val count = prefs.getInt("open_count", 0) + 1
+            prefs.edit().putInt("open_count", count).apply()
         }
 
         fun updatePrompt(context: Context, promptText: String) {
-            updateAll(context, defaultViews(context).apply {
+            val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
+                setImageViewBitmap(R.id.capsule_bg, staticAuroraBitmap(context))
+                setViewVisibility(R.id.capsule_bg, View.VISIBLE)
+                setViewVisibility(R.id.capsule, View.VISIBLE)
+                setViewVisibility(R.id.tv_prompt, View.VISIBLE)
+                setViewVisibility(R.id.btn_mic, View.VISIBLE)
+                setViewVisibility(R.id.tv_status, View.GONE)
+                setViewVisibility(R.id.btn_cancel_rec, View.GONE)
+                setViewVisibility(R.id.pb_preparing, View.GONE)
+                setViewVisibility(R.id.tv_recording_text, View.GONE)
+                setViewVisibility(R.id.btn_stop, View.GONE)
+                setViewVisibility(R.id.fl_recording_submit, View.GONE)
+                setViewVisibility(R.id.iv_status_check, View.GONE)
                 setTextViewText(R.id.tv_prompt, promptText)
-            })
+                setFloat(R.id.tv_prompt, "setAlpha", 0.90f)
+                setFloat(R.id.capsule, "setAlpha", 1.0f)
+                setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
+                setOnClickPendingIntent(R.id.tv_prompt, textInputPi(context))
+                setOnClickPendingIntent(R.id.btn_mic, voiceStartPi(context))
+            }
+            updateAll(context, views)
         }
 
         // ── Хелперы ──────────────────────────────────────────────────────────

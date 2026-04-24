@@ -40,11 +40,16 @@ cd android
 | Сценарий | Действие |
 |----------|---------|
 | Перевод | Нажать на виджет → чип «Перевод» → выбрать контакт → сумма → «Отправить» |
+| Перевод с комментарием | Ввести «Переведи Кате 500 за пиццу» → модал с комментарием |
 | Баланс | Нажать на виджет → чип «Баланс» |
 | Пополнение | Нажать на виджет → чип «Пополнить» → номер → «Пополнить» |
+| Оплата планового платежа | Подсказка-напоминание → «Оплатить» → подтвердить |
+| Подсказка ВЫГОДА | Подсказка с оффером → «Подробнее» |
 | Голос | Нажать на микрофон в виджете → режим записи |
 | Будильник | Нажать на виджет → ввести «Разбуди в 7 утра» |
 | Открыть приложение | «Открой Telegram» / «Открой ВТБ» |
+| Dashboard аналитики | vtb.vibefounder.ru/dashboard (vita/vtb2026) |
+| Dashboard подсказок | vtb.vibefounder.ru/dashboard/hints (vita/vtb2026) |
 
 ---
 
@@ -73,5 +78,5 @@ cd android
 ## Стек
 
 - **Android:** Kotlin + Jetpack Compose + AppWidget API (minSdk 26, targetSdk 34)
-- **Mock API:** Python + FastAPI (`ml/mock_api/`)
-- **Деплой:** Railway / Render (NLP) + GitHub Releases (APK)
+- **Mock API:** Python + FastAPI (`ml/mock_api/`), SQLite + aiosqlite
+- **Деплой:** Docker на VDS + nginx + vtb.vibefounder.ru

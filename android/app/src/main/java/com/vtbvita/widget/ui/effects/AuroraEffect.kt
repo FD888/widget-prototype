@@ -24,11 +24,10 @@ import kotlin.math.PI
 //
 // Фон: равномерный #1e368e с обеих сторон
 // Три полосы, все #00aaff:
-//   b1 pos=0.00  pow   add     — мягкое левое свечение, медленная волна
-//   b2 pos=0.80  pow   add     — широкое правое гало, почти статично
-//   b3 pos=0.84  cosine screen — острый блик поверх b2, очень медленно
-// Гамма 0.60 (brightens midtones)
-// Shimmer = 0
+//   b1 pos=0.00  pow   add     — левое свечение, статичное
+//   b2 pos=0.80  pow   add     — правое гало, мягкая волна
+//   b3 pos=0.84  cosine screen — острый блик поверх b2
+// Гамма 1.02
 
 // ── AGSL Shader (API 33+) ─────────────────────────────────────────────────────
 
@@ -75,18 +74,18 @@ half4 main(float2 fragCoord) {
     // Фон: равномерный тёмно-синий
     half3 col = half3(0.118, 0.212, 0.557);
 
-    // ── Полоса 1: левый край, мягкое свечение, pow, add ──────────────────────
+    // ── Полоса 1: левый край, статичное свечение, pow, add ──────────────────
     float c1 = 0.00 + bandWave(uv.y, t,
-        0.02 * liveAmp, 1.5, 0.30, 5.20, 0.030, 0.000);
-    float bv1 = (bandPow(uv.x - c1, 0.09, 0.75) * 1.35
-               + bandPow(uv.x - c1, 0.17, 1.00) * 0.55) * 0.45 * 0.46;
+        0.00 * liveAmp, 0.00, 0.00, 5.20, 0.000, 0.000);
+    float bv1 = (bandPow(uv.x - c1, 0.105, 3.00) * 1.35
+               + bandPow(uv.x - c1, 0.174, 1.52) * 0.52) * 0.201;
     col += half3(0.000, 0.667, 1.000) * half(bv1);
 
     // ── Полоса 2: правое широкое гало, pow, add ───────────────────────────────
     float c2 = 0.80 + bandWave(uv.y, t,
-        0.00 * liveAmp, 0.5, 0.30, 0.00, 0.050, 0.030);
+        0.00 * liveAmp, 0.13, 0.30, 0.00, 0.050, 0.043);
     float bv2 = (bandPow(uv.x - c2, 0.14, 1.00) * 1.35
-               + bandPow(uv.x - c2, 0.33, 1.00) * 0.55) * 0.25 * 1.00;
+               + bandPow(uv.x - c2, 0.309, 1.00) * 0.55) * 0.25 * 1.00;
     col += half3(0.000, 0.667, 1.000) * half(bv2);
 
     // ── Полоса 3: острый блик, cosine, screen ─────────────────────────────────
@@ -96,8 +95,13 @@ half4 main(float2 fragCoord) {
                + bandCos(uv.x - c3, 0.18) * 0.55) * 0.25 * 1.00;
     col = blendScreen(col, half3(0.000, 0.667, 1.000) * half(bv3));
 
-    // Гамма 0.60 → pow(col, 1/0.60) = pow(col, 1.667)
-    col = pow(clamp(col, 0.0, 1.0), half3(1.6667));
+    // Гамма 1.02 → pow(col, 1/1.02) = pow(col, 0.9804)
+    col = pow(clamp(col, 0.0, 1.0), half3(0.9804));
+
+    // Виньетка: мягкое затемнение у самых краёв, ширина ~8% от размера
+    float2 edgeDist = float2(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+    float edgeFade = smoothstep(0.0, 0.04, edgeDist.x) * smoothstep(0.0, 0.08, edgeDist.y);
+    col *= half(1.0 - 0.12 * (1.0 - edgeFade));
 
     return half4(col, 1.0);
 }
@@ -136,6 +140,11 @@ object AuroraRenderer {
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
+    private fun smoothstep(edge0: Float, edge1: Float, x: Float): Float {
+        val t = ((x - edge0) / (edge1 - edge0)).coerceIn(0f, 1f)
+        return t * t * (3f - 2f * t)
+    }
+
     fun draw(canvas: Canvas, w: Float, h: Float, timeSec: Float, amplitude: Float) {
         val liveAmp = 1f + (amplitude - 0.08f) * 3.5f
         val pixels  = IntArray(CW * CH)
@@ -144,8 +153,8 @@ object AuroraRenderer {
             val uvY = py.toFloat() / CH
 
             // Per-band wave offsets for this row
-            val w1 = bandWave(uvY, timeSec, 0.02f * liveAmp, 1.5f, 0.30f, 5.20f, 0.030f, 0.000f)
-            val w2 = bandWave(uvY, timeSec, 0.00f * liveAmp, 0.5f, 0.30f, 0.00f, 0.050f, 0.030f)
+            val w1 = bandWave(uvY, timeSec, 0.00f * liveAmp, 0.00f, 0.00f, 5.20f, 0.000f, 0.000f)
+            val w2 = bandWave(uvY, timeSec, 0.00f * liveAmp, 0.13f, 0.30f, 0.00f, 0.050f, 0.043f)
             val w3 = bandWave(uvY, timeSec, 0.01f * liveAmp, 0.5f, 0.10f, 3.20f, 0.055f, 0.000f)
 
             val c1 = 0.00f + w1
@@ -161,13 +170,13 @@ object AuroraRenderer {
                 var b = 0.557f
 
                 // Полоса 1: add
-                val bv1 = (bandPow(uvX - c1, 0.09f, 0.75f) * 1.35f +
-                           bandPow(uvX - c1, 0.17f, 1.00f) * 0.55f) * 0.45f * 0.46f
+                val bv1 = (bandPow(uvX - c1, 0.105f, 3.00f) * 1.35f +
+                           bandPow(uvX - c1, 0.174f, 1.52f) * 0.52f) * 0.201f
                 r += 0.000f * bv1; g += 0.667f * bv1; b += 1.000f * bv1
 
                 // Полоса 2: add
                 val bv2 = (bandPow(uvX - c2, 0.14f, 1.00f) * 1.35f +
-                           bandPow(uvX - c2, 0.33f, 1.00f) * 0.55f) * 0.25f * 1.00f
+                           bandPow(uvX - c2, 0.309f, 1.00f) * 0.55f) * 0.25f * 1.00f
                 r += 0.000f * bv2; g += 0.667f * bv2; b += 1.000f * bv2
 
                 // Полоса 3: screen
@@ -176,8 +185,21 @@ object AuroraRenderer {
                 val l3r = 0.000f * bv3; val l3g = 0.667f * bv3; val l3b = 1.000f * bv3
                 r = screenR(r, l3r); g = screenR(g, l3g); b = screenR(b, l3b)
 
-                // Гамма 0.60 → pow(v, 1/0.6)
-                val gamma = 1f / 0.60f
+                // Гамма 1.02 → pow(v, 1/1.02)
+                val gamma = 1f / 1.02f
+                r = r.coerceIn(0f, 1f).pow(gamma)
+                g = g.coerceIn(0f, 1f).pow(gamma)
+                b = b.coerceIn(0f, 1f).pow(gamma)
+
+                // Виньетка: мягкое затемнение у самых краёв
+                val edgeX = kotlin.math.min(px.toFloat() / CW, 1f - px.toFloat() / CW)
+                val edgeY = kotlin.math.min(py.toFloat() / CH, 1f - py.toFloat() / CH)
+                val fadeX = smoothstep(0f, 0.04f, edgeX)
+                val fadeY = smoothstep(0f, 0.08f, edgeY)
+                val edgeFade = fadeX * fadeY
+                r *= 1f - 0.12f * (1f - edgeFade)
+                g *= 1f - 0.12f * (1f - edgeFade)
+                b *= 1f - 0.12f * (1f - edgeFade)
                 r = r.coerceIn(0f, 1f).pow(gamma)
                 g = g.coerceIn(0f, 1f).pow(gamma)
                 b = b.coerceIn(0f, 1f).pow(gamma)
@@ -219,7 +241,7 @@ object AuroraRenderer {
 fun Modifier.auroraBackground(
     isRecording: Boolean,
     amplitude: Float,
-    cornerRadius: Dp = 32.dp
+    cornerRadius: Dp = 16.dp
 ): Modifier {
     var timeSec by remember { mutableFloatStateOf(0f) }
 

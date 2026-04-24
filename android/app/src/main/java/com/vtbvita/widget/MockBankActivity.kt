@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,6 +36,7 @@ import com.vtbvita.widget.ui.theme.OmegaError
 import com.vtbvita.widget.ui.theme.OmegaErrorBg
 import com.vtbvita.widget.ui.theme.OmegaSurface
 import com.vtbvita.widget.ui.theme.OmegaSurfaceAlt
+import com.vtbvita.widget.ui.theme.OmegaRadius
 import com.vtbvita.widget.ui.theme.OmegaSuccess
 import com.vtbvita.widget.ui.theme.OmegaTextDisabled
 import com.vtbvita.widget.ui.theme.OmegaTextHint
@@ -52,6 +55,23 @@ class MockBankActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_PERSONA_ID = "persona_id"
+        const val EXTRA_TAB = "tab"
+        const val EXTRA_CHAT_TEXT = "chat_text"
+        const val TAB_PRODUCTS = 2
+        const val TAB_CHAT = 4
+
+        fun productsIntent(context: Context): Intent =
+            Intent(context, MockBankActivity::class.java).apply {
+                putExtra(EXTRA_TAB, TAB_PRODUCTS)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+
+        fun chatIntent(context: Context, prefillText: String? = null): Intent =
+            Intent(context, MockBankActivity::class.java).apply {
+                putExtra(EXTRA_TAB, TAB_CHAT)
+                prefillText?.let { putExtra(EXTRA_CHAT_TEXT, it) }
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
     }
 
     override fun onStop() {
@@ -68,11 +88,15 @@ class MockBankActivity : ComponentActivity() {
         val personaId = intent.getStringExtra(EXTRA_PERSONA_ID)
             ?: SessionManager.getPersonaId(this)
             ?: "denis"
+        val initialTab = intent.getIntExtra(EXTRA_TAB, 0)
+        val chatPrefillText = intent.getStringExtra(EXTRA_CHAT_TEXT)
 
         setContent {
             VTBVitaTheme {
                 MockBankScreen(
                     personaId = personaId,
+                    initialTab = initialTab,
+                    chatPrefillText = chatPrefillText,
                     onLogout = {
                         SessionManager.logout(applicationContext)
                         val awm = android.appwidget.AppWidgetManager.getInstance(applicationContext)
@@ -93,8 +117,8 @@ class MockBankActivity : ComponentActivity() {
 }
 
 @Composable
-fun MockBankScreen(personaId: String, onLogout: () -> Unit = {}) {
-    var selectedTab by remember { mutableStateOf(0) }
+fun MockBankScreen(personaId: String, initialTab: Int = 0, chatPrefillText: String? = null, onLogout: () -> Unit = {}) {
+    var selectedTab by remember { mutableStateOf(initialTab) }
     val context = LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize().background(OmegaBackground)) {
@@ -139,7 +163,7 @@ fun MockBankScreen(personaId: String, onLogout: () -> Unit = {}) {
                 1 -> PaymentsTab(context)
                 2 -> ProductsTab(context)
                 3 -> HistoryTab()
-                4 -> ChatTab()
+                4 -> ChatTab(prefillText = chatPrefillText)
             }
         }
 
@@ -270,7 +294,7 @@ private fun WidgetSettingsCard(context: Context) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = OmegaRadius.lg,
         colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -338,7 +362,7 @@ fun AccountCard(account: AccountInfo) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = OmegaRadius.lg,
         colors = CardDefaults.cardColors(containerColor = cardColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -434,7 +458,7 @@ fun PaymentsTab(context: Context) {
 private fun PayCategoryCell(category: PayCategory, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Card(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = OmegaRadius.md,
         colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -497,7 +521,7 @@ fun ProductsTab(context: Context) {
         items(products) { product ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = OmegaRadius.md,
                 colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
@@ -575,7 +599,7 @@ fun HistoryTab() {
         items(transactions) { tx ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = OmegaRadius.md,
                 colors = CardDefaults.cardColors(containerColor = OmegaSurfaceAlt),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
@@ -614,14 +638,23 @@ fun HistoryTab() {
 private data class ChatMsg(val text: String, val fromBot: Boolean)
 
 @Composable
-fun ChatTab() {
-    val messages = listOf(
-        ChatMsg("Добро пожаловать в чат поддержки ВТБ. Чем могу помочь?", fromBot = true),
-        ChatMsg("Мне нужна помощь с переводом", fromBot = false),
-        ChatMsg("Для переводов воспользуйтесь голосовым помощником Vita — просто скажите «Переведи Маше 1000 рублей».", fromBot = true),
-        ChatMsg("Как открыть накопительный счёт с лучшей ставкой?", fromBot = false),
-        ChatMsg("Накопительный счёт «ВТБ Копилка» сейчас даёт до 8% годовых. Открыть можно в разделе Продукты.", fromBot = true),
-    )
+fun ChatTab(prefillText: String? = null) {
+    var inputText by remember { mutableStateOf(prefillText ?: "") }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(prefillText) {
+        if (!prefillText.isNullOrBlank()) {
+            focusRequester.requestFocus()
+        }
+    }
+
+    val botResponse = when {
+        inputText.contains("перевод", ignoreCase = true) -> "Для переводов используйте голосового помощника Vita — скажите «Переведи Маше 1000 рублей» в виджете."
+        inputText.contains("баланс", ignoreCase = true) -> "Ваш баланс можно узнать через виджет Vita или в разделе «Главная»."
+        inputText.contains("кредит", ignoreCase = true) -> "Кредитные продукты доступны в разделе «Продукты». Хотите оформить заявку?"
+        inputText.contains("карт", ignoreCase = true) -> "Информация по картам — в разделе «Главная». Могу ли я ещё чем-то помочь?"
+        else -> null
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -637,7 +670,20 @@ fun ChatTab() {
                     color = OmegaTextPrimary
                 )
             }
-            items(messages) { msg -> ChatBubble(msg) }
+            item { ChatBubble(ChatMsg("Здравствуйте! Я — виртуальный ассистент ВТБ. Чем могу помочь?", fromBot = true)) }
+            if (!prefillText.isNullOrBlank()) {
+                item { ChatBubble(ChatMsg(prefillText, fromBot = false)) }
+                item {
+                    ChatBubble(ChatMsg(
+                        "Могу помочь с этим вопросом. Подскажите подробности, или воспользуйтесь голосовым помощником Vita.",
+                        fromBot = true
+                    ))
+                }
+            }
+            if (botResponse != null && inputText.isNotBlank() && inputText != prefillText) {
+                item { ChatBubble(ChatMsg(inputText, fromBot = false)) }
+                item { ChatBubble(ChatMsg(botResponse, fromBot = true)) }
+            }
         }
 
         Row(
@@ -648,15 +694,18 @@ fun ChatTab() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             OutlinedTextField(
-                value = "",
-                onValueChange = {},
-                enabled = false,
-                placeholder = { Text("Чат недоступен в демо-режиме", style = OmegaType.BodyTightM) },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(24.dp),
+                value = inputText,
+                onValueChange = { inputText = it },
+                placeholder = { Text("Напишите сообщение...", style = OmegaType.BodyTightM, color = OmegaTextHint) },
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester),
+                shape = OmegaRadius.xxl,
+                maxLines = 3,
                 colors = OutlinedTextFieldDefaults.colors(
-                    disabledBorderColor = OmegaChip,
-                    disabledPlaceholderColor = OmegaTextSecondary
+                    cursorColor = OmegaBrandPrimary,
+                    focusedBorderColor = OmegaBrandPrimary,
+                    unfocusedBorderColor = OmegaChip,
                 )
             )
         }

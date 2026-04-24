@@ -22,6 +22,9 @@ data class ParsedIntent(
     val durationSeconds: Int? = null,
     val contact: String? = null,
     val destination: String? = null,
+    val comment: String? = null,
+    val botRedirect: Boolean = false,
+    val originalText: String? = null,
     val confidence: Double = 0.9,
 )
 
@@ -61,6 +64,9 @@ object NlpService {
                     durationSeconds = json.optInt("duration_seconds").takeIf { json.has("duration_seconds") && !json.isNull("duration_seconds") },
                     contact         = json.optString("contact").takeIf { it.isNotEmpty() },
                     destination     = json.optString("destination").takeIf { it.isNotEmpty() },
+                    comment         = json.optString("comment").takeIf { it.isNotEmpty() },
+                    botRedirect     = json.optBoolean("bot_redirect", false),
+                    originalText    = json.optString("original_text").takeIf { it.isNotEmpty() },
                     confidence      = json.optDouble("confidence", 0.9),
                 )
             }

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aurora Playground</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0f; color: #ccc; font-family: 'JetBrains Mono', monospace, sans-serif; display: flex; height: 100vh; }
+#preview { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; }
+canvas { width: 100%; max-width: 800px; border-radius: 32px; display: block; }
+#previewInfo { font-size: 11px; color: #667; text-align: center; }
+#panel { width: 380px; background: #111118; overflow-y: auto; padding: 16px; border-left: 1px solid #222; }
+h3 { color: #6af; margin: 12px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+.group { margin-bottom: 4px; }
+.row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+.row label { width: 110px; font-size: 11px; color: #889; flex-shrink: 0; }
+.row input[type=range] { flex: 1; }
+.row .val { width: 52px; text-align: right; font-size: 11px; color: #6af; flex-shrink: 0; }
+.row select { flex: 1; background: #1a1a22; color: #6af; border: 1px solid #335; border-radius: 4px; padding: 2px 4px; font-size: 11px; }
+.btnRow { display: flex; gap: 6px; margin-top: 12px; }
+.btnRow button { flex: 1; padding: 8px; cursor: pointer; font-size: 12px; border-radius: 8px; border: 1px solid #335; }
+#resetBtn { background: #1a2a5e; color: #6af; }
+#resetBtn:hover { background: #244; }
+#copyBtn { background: #1a3a1a; color: #6f6; border-color: #353; }
+#copyBtn:hover { background: #264; }
+#pauseBtn { background: #3a1a1a; color: #f66; border-color: #533; }
+#pauseBtn:hover { background: #642; }
+#pauseBtn.paused { background: #1a3a1a; color: #6f6; border-color: #353; }
+#snippet { display: none; margin-top: 8px; background: #0a0a0f; padding: 8px; border-radius: 6px; font-size: 10px; white-space: pre-wrap; word-break: break-all; color: #9a9; max-height: 200px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div id="preview">
+  <canvas id="c" width="800" height="160"></canvas>
+  <div id="previewInfo">time: <span id="timeDisp">0.00</span>s &nbsp;|&nbsp; paused: <span id="pauseDisp">no</span></div>
+</div>
+<div id="panel">
+  <h3>Display</h3>
+  <div class="group" id="grp-display"></div>
+  <h3>Global</h3>
+  <div class="group" id="grp-global"></div>
+  <h3>Band 1 — left glow</h3>
+  <div class="row"><label>Shape</label><select id="b1_shape"><option value="pow">pow</option><option value="cos">cosine</option></select><label>Blend</label><select id="b1_blend"><option value="add">add</option><option value="screen">screen</option><option value="multiply">multiply</option><option value="overlay">overlay</option><option value="softlight">soft light</option><option value="hardlight">hard light</option></select></div>
+  <div class="group" id="grp-b1"></div>
+  <h3>Band 2 — right halo</h3>
+  <div class="row"><label>Shape</label><select id="b2_shape"><option value="pow">pow</option><option value="cos">cosine</option></select><label>Blend</label><select id="b2_blend"><option value="add">add</option><option value="screen">screen</option><option value="multiply">multiply</option><option value="overlay">overlay</option><option value="softlight">soft light</option><option value="hardlight">hard light</option></select></div>
+  <div class="group" id="grp-b2"></div>
+  <h3>Band 3 — sharp accent</h3>
+  <div class="row"><label>Shape</label><select id="b3_shape"><option value="pow">pow</option><option value="cos">cosine</option></select><label>Blend</label><select id="b3_blend"><option value="add">add</option><option value="screen">screen</option><option value="multiply">multiply</option><option value="overlay">overlay</option><option value="softlight">soft light</option><option value="hardlight">hard light</option></select></div>
+  <div class="group" id="grp-b3"></div>
+  <div class="btnRow">
+    <button id="pauseBtn">Pause / Play</button>
+  </div>
+  <div class="btnRow">
+    <button id="resetBtn">Reset defaults</button>
+    <button id="copyBtn">Copy Kotlin params</button>
+  </div>
+  <div id="snippet"></div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+if (!gl) { document.body.innerHTML = '<h2 style="color:red;text-align:center;margin-top:40vh">WebGL not supported</h2>'; throw 'no gl'; }
+
+// ── Defaults (matching AuroraEffect.kt) ─────────────────────────
+const DEFAULTS = {
+  // Display
+  display_gamma: 1.0,
+  // Global
+  base_r: 0.118, base_g: 0.212, base_b: 0.557,
+  light_r: 0.000, light_g: 0.667, light_b: 1.000,
+  gamma: 0.60,
+  amp_mult: 3.5, amp_base: 0.08,
+  // Band 1
+  b1_pos: 0.00,
+  b1_shape: 'pow', b1_blend: 'add',
+  b1_wave_amp: 0.02, b1_wave_freq: 1.5, b1_wave_speed: 0.30, b1_wave_phase: 5.20,
+  b1_wave_h2: 0.030, b1_wave_h3: 0.000,
+  b1_sigma1: 0.09, b1_sharp1: 0.75, b1_sigma2: 0.17, b1_sharp2: 1.00,
+  b1_mix1: 1.35, b1_mix2: 0.55, b1_opacity: 0.207,
+  // Band 2
+  b2_pos: 0.80,
+  b2_shape: 'pow', b2_blend: 'add',
+  b2_wave_amp: 0.00, b2_wave_freq: 0.5, b2_wave_speed: 0.30, b2_wave_phase: 0.00,
+  b2_wave_h2: 0.050, b2_wave_h3: 0.030,
+  b2_sigma1: 0.14, b2_sharp1: 1.00, b2_sigma2: 0.33, b2_sharp2: 1.00,
+  b2_mix1: 1.35, b2_mix2: 0.55, b2_opacity: 0.25,
+  // Band 3
+  b3_pos: 0.84,
+  b3_shape: 'cos', b3_blend: 'screen',
+  b3_wave_amp: 0.01, b3_wave_freq: 0.5, b3_wave_speed: 0.10, b3_wave_phase: 3.20,
+  b3_wave_h2: 0.055, b3_wave_h3: 0.000,
+  b3_sigma1: 0.07, b3_sigma2: 0.18,
+  b3_mix1: 1.35, b3_mix2: 0.55, b3_opacity: 0.25,
+  // Amplitude (voice)
+  amplitude: 0.08,
+};
+
+let P = { ...DEFAULTS };
+let paused = false;
+let pausedTime = 0;
+
+// ── Init selects from defaults ──────────────────────────────
+for (const i of [1,2,3]) {
+  document.getElementById(`b${i}_shape`).value = P[`b${i}_shape`];
+  document.getElementById(`b${i}_blend`).value = P[`b${i}_blend`];
+  document.getElementById(`b${i}_shape`).onchange = (e) => { P[`b${e.target.id}`] = e.target.value; };
+  document.getElementById(`b${i}_blend`).onchange = (e) => { P[`b${e.target.id}`] = e.target.value; };
+}
+// Fix: bind selects properly
+document.querySelectorAll('select').forEach(sel => {
+  sel.onchange = () => { P[sel.id] = sel.value; };
+});
+
+// ── Slider definitions ──────────────────────────────────────────
+const SLIDERS = {
+  'grp-display': [
+    ['display_gamma', 0.5, 5.0, 0.01],
+  ],
+  'grp-global': [
+    ['base_r',    0, 1, 0.001], ['base_g',    0, 1, 0.001], ['base_b',    0, 1, 0.001],
+    ['light_r',   0, 1, 0.001], ['light_g',  0, 1, 0.001], ['light_b',  0, 1, 0.001],
+    ['gamma',     0.1, 2.0, 0.01],
+    ['amp_mult',  0, 8, 0.1], ['amp_base',  0, 0.5, 0.01],
+    ['amplitude', 0, 1, 0.01],
+  ],
+  'grp-b1': [
+    ['b1_pos', 0, 1, 0.01],
+    ['b1_wave_amp', 0, 0.1, 0.001], ['b1_wave_freq', 0, 5, 0.01], ['b1_wave_speed', 0, 1, 0.01], ['b1_wave_phase', 0, 10, 0.1],
+    ['b1_wave_h2', 0, 0.2, 0.001], ['b1_wave_h3', 0, 0.2, 0.001],
+    ['b1_sigma1', 0.01, 0.5, 0.001], ['b1_sharp1', 0.1, 3, 0.01],
+    ['b1_sigma2', 0.01, 0.5, 0.001], ['b1_sharp2', 0.1, 3, 0.01],
+    ['b1_mix1', 0, 3, 0.01], ['b1_mix2', 0, 3, 0.01], ['b1_opacity', 0, 1, 0.001],
+  ],
+  'grp-b2': [
+    ['b2_pos', 0, 1, 0.01],
+    ['b2_wave_amp', 0, 0.1, 0.001], ['b2_wave_freq', 0, 5, 0.01], ['b2_wave_speed', 0, 1, 0.01], ['b2_wave_phase', 0, 10, 0.1],
+    ['b2_wave_h2', 0, 0.2, 0.001], ['b2_wave_h3', 0, 0.2, 0.001],
+    ['b2_sigma1', 0.01, 0.5, 0.001], ['b2_sharp1', 0.1, 3, 0.01],
+    ['b2_sigma2', 0.01, 0.5, 0.001], ['b2_sharp2', 0.1, 3, 0.01],
+    ['b2_mix1', 0, 3, 0.01], ['b2_mix2', 0, 3, 0.01], ['b2_opacity', 0, 1, 0.001],
+  ],
+  'grp-b3': [
+    ['b3_pos', 0, 1, 0.01],
+    ['b3_wave_amp', 0, 0.1, 0.001], ['b3_wave_freq', 0, 5, 0.01], ['b3_wave_speed', 0, 1, 0.01], ['b3_wave_phase', 0, 10, 0.1],
+    ['b3_wave_h2', 0, 0.2, 0.001], ['b3_wave_h3', 0, 0.2, 0.001],
+    ['b3_sigma1', 0.01, 0.5, 0.001], ['b3_sigma2', 0.01, 0.5, 0.001],
+    ['b3_mix1', 0, 3, 0.01], ['b3_mix2', 0, 3, 0.01], ['b3_opacity', 0, 1, 0.001],
+  ],
+};
+
+// ── Build UI ─────────────────────────────────────────────────────
+const inputs = {};
+
+function friendly(name) {
+  if (name === 'display_gamma') return 'Display gamma';
+  return name.replace(/^b([123])_/, 'B$1: ').replace(/_/g, ' ');
+}
+
+for (const [grpId, defs] of Object.entries(SLIDERS)) {
+  const container = document.getElementById(grpId);
+  for (const [key, min, max, step] of defs) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const lbl = document.createElement('label');
+    lbl.textContent = friendly(key);
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = P[key];
+    const val = document.createElement('span');
+    val.className = 'val';
+    val.textContent = Number(P[key]).toFixed(3);
+    inp.oninput = () => { P[key] = parseFloat(inp.value); val.textContent = Number(P[key]).toFixed(3); };
+    inputs[key] = { inp, val };
+    row.append(lbl, inp, val);
+    container.appendChild(row);
+  }
+}
+
+document.getElementById('resetBtn').onclick = () => {
+  Object.assign(P, DEFAULTS);
+  for (const [k, v] of Object.entries(DEFAULTS)) {
+    if (inputs[k]) { inputs[k].inp.value = v; inputs[k].val.textContent = Number(v).toFixed(3); }
+  }
+  for (const i of [1,2,3]) {
+    document.getElementById(`b${i}_shape`).value = P[`b${i}_shape`];
+    document.getElementById(`b${i}_blend`).value = P[`b${i}_blend`];
+  }
+};
+
+document.getElementById('pauseBtn').onclick = () => {
+  paused = !paused;
+  const btn = document.getElementById('pauseBtn');
+  btn.classList.toggle('paused', paused);
+  document.getElementById('pauseDisp').textContent = paused ? 'YES' : 'no';
+  if (paused) {
+    pausedTime = performance.now() / 1000 - startTime;
+  }
+};
+
+document.getElementById('copyBtn').onclick = () => {
+  const s = kotlinSnippet();
+  navigator.clipboard.writeText(s).catch(() => {});
+  const el = document.getElementById('snippet');
+  el.style.display = 'block';
+  el.textContent = s;
+};
+
+function kotlinSnippet() {
+  const g = P.gamma;
+  const gInv = (1 / g).toFixed(4);
+  const blendNames = ['add','screen','multiply','overlay','softlight','hardlight'];
+  let s = `// Aurora params — playground snapshot
+// Display gamma compensation: ${P.display_gamma.toFixed(2)}
+// Base: rgb(${P.base_r.toFixed(3)}, ${P.base_g.toFixed(3)}, ${P.base_b.toFixed(3)})
+// Light: rgb(${P.light_r.toFixed(3)}, ${P.light_g.toFixed(3)}, ${P.light_b.toFixed(3)})
+// Gamma: ${P.gamma} → pow(col, ${gInv})
+// Amplitude: base=${P.amp_base} mult=${P.amp_mult}
+
+// Band 1 (shape=${P.b1_shape}, blend=${P.b1_blend}): pos=${P.b1_pos}
+//   wave: amp=${P.b1_wave_amp} freq=${P.b1_wave_freq} speed=${P.b1_wave_speed} phase=${P.b1_wave_phase} h2=${P.b1_wave_h2} h3=${P.b1_wave_h3}
+//   sigma: σ1=${P.b1_sigma1} sharp1=${P.b1_sharp1} σ2=${P.b1_sigma2} sharp2=${P.b1_sharp2}
+//   mix: ${P.b1_mix1}/${P.b1_mix2} opacity=${P.b1_opacity}
+
+// Band 2 (shape=${P.b2_shape}, blend=${P.b2_blend}): pos=${P.b2_pos}
+//   wave: amp=${P.b2_wave_amp} freq=${P.b2_wave_freq} speed=${P.b2_wave_speed} phase=${P.b2_wave_phase} h2=${P.b2_wave_h2} h3=${P.b2_wave_h3}
+//   sigma: σ1=${P.b2_sigma1} sharp1=${P.b2_sharp1} σ2=${P.b2_sigma2} sharp2=${P.b2_sharp2}
+//   mix: ${P.b2_mix1}/${P.b2_mix2} opacity=${P.b2_opacity}
+
+// Band 3 (shape=${P.b3_shape}, blend=${P.b3_blend}): pos=${P.b3_pos}
+//   wave: amp=${P.b3_wave_amp} freq=${P.b3_wave_freq} speed=${P.b3_wave_speed} phase=${P.b3_wave_phase} h2=${P.b3_wave_h2} h3=${P.b3_wave_h3}
+//   sigma: σ1=${P.b3_sigma1} σ2=${P.b3_sigma2}
+//   mix: ${P.b3_mix1}/${P.b3_mix2} opacity=${P.b3_opacity}`;
+  return s;
+}
+
+// ── Shaders ──────────────────────────────────────────────────────
+const VS = `#version 300 es
+in vec2 aPos;
+out vec2 vUv;
+void main() {
+  vUv = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+const FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform float uTime;
+uniform float uAmp;
+uniform float uDisplayGamma;
+
+uniform vec3 uBase;
+uniform vec3 uLight;
+uniform float uGamma;
+uniform float uAmpMult;
+uniform float uAmpBase;
+
+// Band uniforms
+uniform float b1_pos, b1_wave_amp, b1_wave_freq, b1_wave_speed, b1_wave_phase, b1_wave_h2, b1_wave_h3;
+uniform float b1_sigma1, b1_sharp1, b1_sigma2, b1_sharp2, b1_mix1, b1_mix2, b1_opacity;
+uniform int b1_shape, b1_blend;
+
+uniform float b2_pos, b2_wave_amp, b2_wave_freq, b2_wave_speed, b2_wave_phase, b2_wave_h2, b2_wave_h3;
+uniform float b2_sigma1, b2_sharp1, b2_sigma2, b2_sharp2, b2_mix1, b2_mix2, b2_opacity;
+uniform int b2_shape, b2_blend;
+
+uniform float b3_pos, b3_wave_amp, b3_wave_freq, b3_wave_speed, b3_wave_phase, b3_wave_h2, b3_wave_h3;
+uniform float b3_sigma1, b3_sigma2, b3_mix1, b3_mix2, b3_opacity;
+uniform int b3_shape, b3_blend;
+
+float bandPow(float dist, float sigma, float sharpness) {
+    float d = abs(dist) / sigma;
+    if (d >= 1.0) return 0.0;
+    return pow(1.0 - d, sharpness);
+}
+
+float bandCos(float dist, float sigma) {
+    float d = abs(dist) / sigma;
+    if (d >= 1.0) return 0.0;
+    return 0.5 + 0.5 * cos(d * 3.14159265);
+}
+
+float bandWave(float uvY, float t, float amp, float freq, float speed, float phase, float h2, float h3) {
+    return sin(uvY * freq        + t * speed        + phase) * amp
+         + sin(uvY * freq * 1.83 + t * speed * 1.5  + phase) * h2
+         + sin(uvY * freq * 3.0  + t * speed * 2.0  + phase) * h3;
+}
+
+vec3 blendScreen(vec3 base, vec3 lyr) {
+    return 1.0 - (1.0 - base) * (1.0 - lyr);
+}
+
+vec3 blendMultiply(vec3 base, vec3 lyr) {
+    return base * lyr;
+}
+
+vec3 blendOverlay(vec3 base, vec3 lyr) {
+    vec3 lo = 2.0 * base * lyr;
+    vec3 hi = 1.0 - 2.0 * (1.0 - base) * (1.0 - lyr);
+    return mix(hi, lo, lessThanEqual(base, vec3(0.5)));
+}
+
+vec3 blendSoftLight(vec3 base, vec3 lyr) {
+    return (1.0 - 2.0 * lyr) * base * base + 2.0 * lyr * base;
+}
+
+vec3 blendHardLight(vec3 base, vec3 lyr) {
+    vec3 lo = 2.0 * base * lyr;
+    vec3 hi = 1.0 - 2.0 * (1.0 - base) * (1.0 - lyr);
+    return mix(hi, lo, lessThanEqual(lyr, vec3(0.5)));
+}
+
+float bandShape(float dist, float sigma, float sharpness, int shape) {
+    if (shape == 1) return bandCos(dist, sigma);
+    return bandPow(dist, sigma, sharpness);
+}
+
+vec3 applyBlend(vec3 base, vec3 lyr, int mode) {
+    if (mode == 1) return blendScreen(base, lyr);
+    if (mode == 2) return blendMultiply(base, lyr);
+    if (mode == 3) return blendOverlay(base, lyr);
+    if (mode == 4) return blendSoftLight(base, lyr);
+    if (mode == 5) return blendHardLight(base, lyr);
+    return base + lyr; // 0 = add
+}
+
+// linear → sRGB (IEC 61966-2-1)
+vec3 linearToSrgb(vec3 c) {
+    vec3 lo = c * 12.92;
+    vec3 hi = 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055;
+    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
+}
+
+void main() {
+    float liveAmp = 1.0 + (uAmp - uAmpBase) * uAmpMult;
+    float t = uTime;
+    vec2 uv = vUv;
+    // flip Y so band positions match Android
+    uv.y = 1.0 - uv.y;
+
+    vec3 col = uBase;
+
+    // Band 1
+    float c1 = b1_pos + bandWave(uv.y, t, b1_wave_amp * liveAmp, b1_wave_freq, b1_wave_speed, b1_wave_phase, b1_wave_h2, b1_wave_h3);
+    float bv1 = (bandShape(uv.x - c1, b1_sigma1, b1_sharp1, b1_shape) * b1_mix1
+               + bandShape(uv.x - c1, b1_sigma2, b1_sharp2, b1_shape) * b1_mix2) * b1_opacity;
+    col = applyBlend(col, uLight * bv1, b1_blend);
+
+    // Band 2
+    float c2 = b2_pos + bandWave(uv.y, t, b2_wave_amp * liveAmp, b2_wave_freq, b2_wave_speed, b2_wave_phase, b2_wave_h2, b2_wave_h3);
+    float bv2 = (bandShape(uv.x - c2, b2_sigma1, b2_sharp1, b2_shape) * b2_mix1
+               + bandShape(uv.x - c2, b2_sigma2, b2_sharp2, b2_shape) * b2_mix2) * b2_opacity;
+    col = applyBlend(col, uLight * bv2, b2_blend);
+
+    // Band 3
+    float c3 = b3_pos + bandWave(uv.y, t, b3_wave_amp * liveAmp, b3_wave_freq, b3_wave_speed, b3_wave_phase, b3_wave_h2, b3_wave_h3);
+    float bv3 = (bandShape(uv.x - c3, b3_sigma1, 0.0, b3_shape) * b3_mix1
+               + bandShape(uv.x - c3, b3_sigma2, 0.0, b3_shape) * b3_mix2) * b3_opacity;
+    col = applyBlend(col, uLight * bv3, b3_blend);
+
+    // Aurora gamma (matching AuroraEffect.kt)
+    col = pow(clamp(col, 0.0, 1.0), vec3(1.0 / uGamma));
+
+    // Display gamma compensation:
+    // Android Canvas stores 8-bit sRGB and displays as-is,
+    // whereas WebGL renders in linear space. Apply linear→sRGB
+    // conversion, then an adjustable power to match phone screens.
+    col = linearToSrgb(col);
+    col = pow(col, vec3(uDisplayGamma));
+
+    fragColor = vec4(col, 1.0);
+}`;
+
+function compileShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; }
+  return s;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'aPos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const U = {};
+const uniformNames = [
+  'uTime','uAmp','uDisplayGamma','uBase','uLight','uGamma','uAmpMult','uAmpBase',
+  'b1_pos','b1_wave_amp','b1_wave_freq','b1_wave_speed','b1_wave_phase','b1_wave_h2','b1_wave_h3',
+  'b1_sigma1','b1_sharp1','b1_sigma2','b1_sharp2','b1_mix1','b1_mix2','b1_opacity','b1_shape','b1_blend',
+  'b2_pos','b2_wave_amp','b2_wave_freq','b2_wave_speed','b2_wave_phase','b2_wave_h2','b2_wave_h3',
+  'b2_sigma1','b2_sharp1','b2_sigma2','b2_sharp2','b2_mix1','b2_mix2','b2_opacity','b2_shape','b2_blend',
+  'b3_pos','b3_wave_amp','b3_wave_freq','b3_wave_speed','b3_wave_phase','b3_wave_h2','b3_wave_h3',
+  'b3_sigma1','b3_sigma2','b3_mix1','b3_mix2','b3_opacity','b3_shape','b3_blend',
+];
+for (const n of uniformNames) U[n] = gl.getUniformLocation(prog, n);
+
+gl.viewport(0, 0, canvas.width, canvas.height);
+
+const SHAPE_MAP = { pow: 0, cos: 1 };
+const BLEND_MAP = { add: 0, screen: 1, multiply: 2, overlay: 3, softlight: 4, hardlight: 5 };
+
+const startTime = performance.now() / 1000;
+const timeDisp = document.getElementById('timeDisp');
+
+function render() {
+  const elapsed = paused ? pausedTime : performance.now() / 1000 - startTime;
+  timeDisp.textContent = elapsed.toFixed(2);
+  gl.uniform1f(U.uTime, elapsed);
+  gl.uniform1f(U.uAmp, P.amplitude);
+  gl.uniform1f(U.uDisplayGamma, P.display_gamma);
+  gl.uniform3f(U.uBase, P.base_r, P.base_g, P.base_b);
+  gl.uniform3f(U.uLight, P.light_r, P.light_g, P.light_b);
+  gl.uniform1f(U.uGamma, P.gamma);
+  gl.uniform1f(U.uAmpMult, P.amp_mult);
+  gl.uniform1f(U.uAmpBase, P.amp_base);
+
+  gl.uniform1f(U.b1_pos, P.b1_pos);
+  gl.uniform1f(U.b1_wave_amp, P.b1_wave_amp);
+  gl.uniform1f(U.b1_wave_freq, P.b1_wave_freq);
+  gl.uniform1f(U.b1_wave_speed, P.b1_wave_speed);
+  gl.uniform1f(U.b1_wave_phase, P.b1_wave_phase);
+  gl.uniform1f(U.b1_wave_h2, P.b1_wave_h2);
+  gl.uniform1f(U.b1_wave_h3, P.b1_wave_h3);
+  gl.uniform1f(U.b1_sigma1, P.b1_sigma1);
+  gl.uniform1f(U.b1_sharp1, P.b1_sharp1);
+  gl.uniform1f(U.b1_sigma2, P.b1_sigma2);
+  gl.uniform1f(U.b1_sharp2, P.b1_sharp2);
+  gl.uniform1f(U.b1_mix1, P.b1_mix1);
+  gl.uniform1f(U.b1_mix2, P.b1_mix2);
+  gl.uniform1f(U.b1_opacity, P.b1_opacity);
+  gl.uniform1i(U.b1_shape, SHAPE_MAP[P.b1_shape] || 0);
+  gl.uniform1i(U.b1_blend, BLEND_MAP[P.b1_blend] || 0);
+
+  gl.uniform1f(U.b2_pos, P.b2_pos);
+  gl.uniform1f(U.b2_wave_amp, P.b2_wave_amp);
+  gl.uniform1f(U.b2_wave_freq, P.b2_wave_freq);
+  gl.uniform1f(U.b2_wave_speed, P.b2_wave_speed);
+  gl.uniform1f(U.b2_wave_phase, P.b2_wave_phase);
+  gl.uniform1f(U.b2_wave_h2, P.b2_wave_h2);
+  gl.uniform1f(U.b2_wave_h3, P.b2_wave_h3);
+  gl.uniform1f(U.b2_sigma1, P.b2_sigma1);
+  gl.uniform1f(U.b2_sharp1, P.b2_sharp1);
+  gl.uniform1f(U.b2_sigma2, P.b2_sigma2);
+  gl.uniform1f(U.b2_sharp2, P.b2_sharp2);
+  gl.uniform1f(U.b2_mix1, P.b2_mix1);
+  gl.uniform1f(U.b2_mix2, P.b2_mix2);
+  gl.uniform1f(U.b2_opacity, P.b2_opacity);
+  gl.uniform1i(U.b2_shape, SHAPE_MAP[P.b2_shape] || 0);
+  gl.uniform1i(U.b2_blend, BLEND_MAP[P.b2_blend] || 0);
+
+  gl.uniform1f(U.b3_pos, P.b3_pos);
+  gl.uniform1f(U.b3_wave_amp, P.b3_wave_amp);
+  gl.uniform1f(U.b3_wave_freq, P.b3_wave_freq);
+  gl.uniform1f(U.b3_wave_speed, P.b3_wave_speed);
+  gl.uniform1f(U.b3_wave_phase, P.b3_wave_phase);
+  gl.uniform1f(U.b3_wave_h2, P.b3_wave_h2);
+  gl.uniform1f(U.b3_wave_h3, P.b3_wave_h3);
+  gl.uniform1f(U.b3_sigma1, P.b3_sigma1);
+  gl.uniform1f(U.b3_sigma2, P.b3_sigma2);
+  gl.uniform1f(U.b3_mix1, P.b3_mix1);
+  gl.uniform1f(U.b3_mix2, P.b3_mix2);
+  gl.uniform1f(U.b3_opacity, P.b3_opacity);
+  gl.uniform1i(U.b3_shape, SHAPE_MAP[P.b3_shape] || 0);
+  gl.uniform1i(U.b3_blend, BLEND_MAP[P.b3_blend] || 0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  requestAnimationFrame(render);
+}
+render();
+</script>
+</body>
+</html>

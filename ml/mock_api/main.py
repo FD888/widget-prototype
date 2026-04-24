@@ -10,14 +10,19 @@ Flow (balance):
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header, Depends, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from typing import Optional, Literal
 from datetime import datetime, timezone, timedelta
+import httpx
 from collections import defaultdict, deque
 from jose import jwt, JWTError
 from dotenv import load_dotenv
+import secrets
 import uuid
 import os
 import re
@@ -69,6 +74,24 @@ for _entry in os.getenv("ALLOWED_PINS", "1111:vitya,2222:olga,3333:artyom").spli
     if ":" in _entry:
         _pin, _uid = _entry.strip().split(":", 1)
         ALLOWED_PINS[_pin.strip()] = _uid.strip()
+
+DASHBOARD_USER = os.getenv("DASHBOARD_USER", "vita")
+DASHBOARD_PASS = os.getenv("DASHBOARD_PASS", "vtb2026")
+
+_http_basic = HTTPBasic()
+
+def _check_dashboard_auth(credentials: HTTPBasicCredentials = Depends(_http_basic)):
+    ok = (
+        secrets.compare_digest(credentials.username, DASHBOARD_USER)
+        and secrets.compare_digest(credentials.password, DASHBOARD_PASS)
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -252,10 +275,12 @@ def _accounts_for_response(accounts: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 class CommandRequest(BaseModel):
-    intent: Literal["transfer", "topup"]
+    intent: Literal["transfer", "topup", "pay_scheduled"]
     amount: Optional[float] = None
     recipient: Optional[str] = None   # transfer: имя или номер; topup: номер телефона
     phone: Optional[str] = None       # topup: явный номер телефона
+    payment_id: Optional[str] = None  # pay_scheduled: id из scheduled_payments
+    comment: Optional[str] = None     # transfer: комментарий к переводу
 
 
 class AccountInfo(BaseModel):
@@ -295,6 +320,9 @@ class ConfirmationResponse(BaseModel):
     # Topup
     topup_phone: Optional[str] = None    # полный номер для отображения
     operator: Optional[str] = None
+
+    # Transfer
+    comment: Optional[str] = None        # комментарий к переводу
 
     fee: float = 0.0
     timestamp: str
@@ -433,7 +461,8 @@ def _make_result(intent: str, **kwargs) -> dict:
     base: dict = {
         "intent": intent, "recipient": None, "amount": None, "phone": None,
         "app": None, "hour": None, "minute": None, "duration_seconds": None,
-        "contact": None, "destination": None, "confidence": 0.9,
+        "contact": None, "destination": None, "comment": None,
+        "bot_redirect": False, "confidence": 0.9,
     }
     base.update(kwargs)
     return base
@@ -510,16 +539,28 @@ _AMT_GROUP = (
     r"(?:" + _WORD_NUMS + r")(?:\s+(?:" + _MULT_WORDS + r"))?)"
 )
 
-# verb + (стоп-слова?) + name + amount
+# verb + (стоп-слова?) + name + amount + optional "за <comment>"
 _RE_TRANSFER_VNA = re.compile(
     r"(?:" + _TRANSFER_VERBS + r")\s+" + _SKIP_WORDS +
-    r"([а-яе][а-яе]+)\s+" + _AMT_GROUP,
+    r"([а-яеё][а-яеё]+)\s+" + _AMT_GROUP +
+    r"(?:\s+(?:рублей?|руб\.?|р\.?|₽))?" +
+    r"(?:\s+за\s+([а-яеё][а-яеё\s]{1,30}))?",
     _RF,
 )
-# verb + amount + (рублей?) + name
+# verb + name + amount + "за <comment>" (comment mandatory, end anchor)
+_RE_TRANSFER_VNA_COMMENT = re.compile(
+    r"(?:" + _TRANSFER_VERBS + r")\s+" + _SKIP_WORDS +
+    r"([а-яеё][а-яеё]+)\s+" + _AMT_GROUP +
+    r"(?:\s+(?:рублей?|руб\.?|р\.?|₽))?\s+" +
+    r"за\s+([а-яеё][а-яеё\s]{1,30})\s*$",
+    _RF,
+)
+# verb + amount + (рублей?) + name + optional "за <comment>"
 _RE_TRANSFER_VAN = re.compile(
     r"(?:" + _TRANSFER_VERBS + r")\s+" + _AMT_GROUP +
-    r"(?:\s+(?:рублей?|руб\.?|р\.?|₽))?\s+([а-яе][а-яе]+)",
+    r"(?:\s+(?:рублей?|руб\.?|р\.?|₽))?" +
+    r"\s+([а-яеё][а-яеё]+)" +
+    r"(?:\s+за\s+([а-яеё][а-яеё\s]{1,30}))?",
     _RF,
 )
 
@@ -613,19 +654,28 @@ def _regex_parse(text: str) -> Optional[dict]:
     if _RE_BALANCE.search(t):
         return _make_result("balance", confidence=0.95)
 
-    # --- Transfer: verb + (стоп-слова?) + name + amount (оба обязательны) ---
+    # --- Transfer: verb + name + amount + optional "за <comment>" ---
+    m = _RE_TRANSFER_VNA_COMMENT.search(t)
+    if m:
+        amount = _parse_amount(m.group(2))
+        if amount:
+            comment = m.group(3).strip() if m.group(3) else None
+            return _make_result("transfer", recipient=m.group(1).lower(), amount=amount, comment=comment, confidence=0.90)
+
     m = _RE_TRANSFER_VNA.search(t)
     if m:
         amount = _parse_amount(m.group(2))
         if amount:
-            return _make_result("transfer", recipient=m.group(1).lower(), amount=amount, confidence=0.90)
-        return None  # имя есть, суммы нет → LLM
+            comment = m.group(3).strip() if m.group(3) else None
+            return _make_result("transfer", recipient=m.group(1).lower(), amount=amount, comment=comment, confidence=0.90)
+        return None
 
     m = _RE_TRANSFER_VAN.search(t)
     if m:
         amount = _parse_amount(m.group(1))
         if amount:
-            return _make_result("transfer", recipient=m.group(2).lower(), amount=amount, confidence=0.90)
+            comment = m.group(3).strip() if m.group(3) else None
+            return _make_result("transfer", recipient=m.group(2).lower(), amount=amount, comment=comment, confidence=0.90)
         return None
 
     # --- Topup: глагол + числовая сумма (оба обязательны) ---
@@ -688,19 +738,10 @@ def _regex_parse(text: str) -> Optional[dict]:
     return None  # → L2 LLM
 
 
-async def _llm_parse(text: str) -> dict:
-    """L2: полный LLM-парсинг через DeepSeek / OpenRouter."""
-    import httpx
-
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
-    if not api_key:
-        _log.warning("LLM fallback triggered but DEEPSEEK_API_KEY not set, returning unknown")
-        return _make_result("unknown", confidence=0.0)
-
-    _log.info("LLM fallback: text=%r", text)
-
+async def _call_llm(client: httpx.AsyncClient, url: str, api_key: str, model: str, text: str, provider_name: str) -> Optional[dict]:
+    """Единый вызов LLM. Возвращает dict или None при ошибке."""
     payload = {
-        "model": "deepseek/deepseek-chat",
+        "model": model,
         "messages": [
             {"role": "system", "content": PARSE_SYSTEM_PROMPT},
             {"role": "user",   "content": text},
@@ -709,29 +750,64 @@ async def _llm_parse(text: str) -> dict:
         "max_tokens": 256,
         "response_format": {"type": "json_object"},
     }
-
-    async with httpx.AsyncClient(timeout=10) as client:
+    try:
         resp = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
+            url,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json=payload,
         )
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
+        _log.warning("LLM %s connection failed: %s", provider_name, exc)
+        return None
 
     if resp.status_code != 200:
-        _log.error("LLM error: status=%s body=%r", resp.status_code, resp.text[:300])
-        raise HTTPException(status_code=502, detail=f"OpenRouter error: {resp.text}")
+        _log.warning("LLM %s error: status=%s body=%r", provider_name, resp.status_code, resp.text[:300])
+        return None
 
     try:
         content = resp.json()["choices"][0]["message"]["content"]
         result = json.loads(content)
-        _log.info("LLM result: intent=%s confidence=%s", result.get("intent"), result.get("confidence"))
+        _log.info("LLM %s result: intent=%s confidence=%s", provider_name, result.get("intent"), result.get("confidence"))
         return result
     except Exception as e:
-        _log.error("LLM parse error: %s", e)
-        raise HTTPException(status_code=502, detail=f"Parse error: {e}")
+        _log.warning("LLM %s parse error: %s", provider_name, e)
+        return None
+
+
+_LLM_PROVIDERS = [
+    {
+        "name": "deepseek",
+        "url": "https://api.deepseek.com/chat/completions",
+        "env_key": "DEEPSEEK_API_KEY",
+        "model": "deepseek-chat",
+    },
+    {
+        "name": "openrouter",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "env_key": "OPENROUTER_API_KEY",
+        "model": "deepseek/deepseek-chat",
+    },
+]
+
+
+async def _llm_parse(text: str) -> dict:
+    """L2: каскадный LLM-парсинг. DeepSeek (прямой) → OpenRouter → unknown."""
+    _log.info("L2 fallback: text=%r", text)
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        for prov in _LLM_PROVIDERS:
+            api_key = os.getenv(prov["env_key"], "")
+            if not api_key:
+                continue
+            result = await _call_llm(client, prov["url"], api_key, prov["model"], text, prov["name"])
+            if result is not None:
+                return result
+
+    _log.warning("All LLM providers failed, returning unknown")
+    return _make_result("unknown", confidence=0.0)
 
 
 PARSE_SYSTEM_PROMPT = """
@@ -739,7 +815,7 @@ PARSE_SYSTEM_PROMPT = """
 Извлеки намерение пользователя и параметры. Верни ТОЛЬКО валидный JSON без markdown и пояснений.
 
 Возможные intents:
-- transfer   : перевести деньги (recipient, amount)
+- transfer   : перевести деньги (recipient, amount, comment)
 - balance    : проверить баланс
 - topup      : пополнить телефон (phone, amount)
 - open_app   : открыть приложение (app)
@@ -751,6 +827,9 @@ PARSE_SYSTEM_PROMPT = """
 
 Известные значения app: telegram, whatsapp, vk, youtube, spotify,
   yandex_maps, yandex_music, instagram, tiktok, vtb, sber, tinkoff
+
+Для transfer: если указана причина перевода (например "за пиццу", "за обед", "за аренду"),
+  извлеки её в поле comment без предлога "за".
 
 Формат ответа (все поля обязательны, неизвестные = null):
 {
@@ -764,6 +843,7 @@ PARSE_SYSTEM_PROMPT = """
   "duration_seconds": null,
   "contact": null,
   "destination": null,
+  "comment": null,
   "confidence": 0.9
 }
 """.strip()
@@ -784,6 +864,9 @@ class ParseResult(BaseModel):
     duration_seconds: Optional[int] = None
     contact: Optional[str] = None
     destination: Optional[str] = None
+    comment: Optional[str] = None
+    bot_redirect: bool = False
+    original_text: Optional[str] = None
     confidence: float = 0.9
 
 
@@ -804,14 +887,242 @@ async def parse_command(req: ParseRequest):
         ms = int((time.perf_counter() - t0) * 1000)
         _log.info("L1 hit: intent=%s confidence=%.2f text=%r latency=%dms",
                   result["intent"], result["confidence"], req.text, ms)
-        return ParseResult(**{k: result.get(k) for k in ParseResult.model_fields})
+        if result["intent"] == "unknown":
+            result["bot_redirect"] = True
+            result["original_text"] = req.text
+        await db.log_intent(user_id=None, intent=result["intent"])
+        clean = {}
+        for k in ParseResult.model_fields:
+            v = result.get(k)
+            if k == "bot_redirect" and v is None:
+                v = False
+            clean[k] = v
+        return ParseResult(**clean)
 
     # L2: LLM fallback
     _log.info("L1 miss → LLM fallback: text=%r", req.text)
     data = await _llm_parse(req.text)
     ms = int((time.perf_counter() - t0) * 1000)
     _log.info("L2 result: intent=%s latency=%dms", data.get("intent"), ms)
-    return ParseResult(**{k: data.get(k) for k in ParseResult.model_fields})
+    if data.get("intent") == "unknown":
+        data["bot_redirect"] = True
+        data["original_text"] = req.text
+    await db.log_intent(user_id=None, intent=data.get("intent", "unknown"))
+    clean = {}
+    for k in ParseResult.model_fields:
+        v = data.get(k)
+        if k == "bot_redirect" and v is None:
+            v = False
+        if k == "confidence" and v is None:
+            v = 0.0
+        clean[k] = v
+    return ParseResult(**clean)
+
+
+class HintResponse(BaseModel):
+    type: Literal["reminder", "vygoda", "custom", "none"]
+    widget_text: Optional[str] = None
+    payment_id: Optional[str] = None
+    name: Optional[str] = None
+    amount: Optional[float] = None
+    days_until_due: Optional[int] = None
+    is_overdue: Optional[bool] = None
+    urgency: Optional[str] = None
+    label: Optional[str] = None
+    payment_type: Optional[str] = None
+    offer_id: Optional[str] = None
+    offer_text: Optional[str] = None
+    offer_cta: Optional[str] = None
+    offer_action: Optional[str] = None
+
+
+SENSITIVE_PAYMENT_TYPES = {"credit_card", "loan"}
+
+
+def _compute_widget_text(resp_dict: dict) -> Optional[str]:
+    ht = resp_dict.get("type")
+    if ht == "custom":
+        return resp_dict.get("label") or resp_dict.get("name")
+    if ht == "reminder":
+        name = resp_dict.get("name") or "платёж"
+        days = resp_dict.get("days_until_due")
+        is_overdue = resp_dict.get("is_overdue", False)
+        pt = resp_dict.get("payment_type", "")
+        is_sensitive = pt in SENSITIVE_PAYMENT_TYPES
+        amount = resp_dict.get("amount")
+        amt_str = "" if is_sensitive or amount is None else f", {int(amount)} руб"
+        if is_overdue:
+            return f"платёж по {name} просрочен, оплатить?"
+        if days == 0:
+            return f"сегодня платёж по {name}{amt_str}"
+        if days == 1:
+            return f"платёж по {name} завтра{amt_str}"
+        if days is not None and 2 <= days <= 4:
+            return f"платёж по {name} через {days} дня{amt_str}"
+        if days is not None and days > 4:
+            return f"платёж по {name} через {days} дней{amt_str}"
+        return f"платёж по {name} скоро{amt_str}"
+    if ht == "vygoda":
+        return resp_dict.get("offer_text") or "выгодное предложение"
+    return None
+
+
+def _resp(d: dict) -> HintResponse:
+    wt = _compute_widget_text(d)
+    return HintResponse(
+        type=d.get("type", "none"),
+        widget_text=wt,
+        payment_id=d.get("payment_id"),
+        name=d.get("name"),
+        amount=d.get("amount"),
+        days_until_due=d.get("days_until_due"),
+        is_overdue=d.get("is_overdue"),
+        urgency=d.get("urgency"),
+        label=d.get("label"),
+        payment_type=d.get("payment_type"),
+        offer_id=d.get("offer_id"),
+        offer_text=d.get("offer_text"),
+        offer_cta=d.get("offer_cta"),
+        offer_action=d.get("offer_action"),
+    )
+
+
+@app.get("/hint", response_model=HintResponse)
+async def get_hint(user_id: str, _=Depends(_check_app_token)):
+    """
+    Возвращает подсказку для пользователя: напоминание о платеже или предложение ВЫГОДЫ.
+    Приоритет: override → reminder > vygoda > none.
+    Override управляется через /dashboard/hints/api.
+    Требует X-Api-Key (app token), без banking JWT.
+    """
+    override = await db.get_hint_override(user_id)
+
+    if override:
+        otype = override.get("hint_type", "auto")
+
+        if otype == "none":
+            custom = override.get("custom_text")
+            if custom:
+                r = _resp({"type": "custom", "label": custom})
+                return r
+            return HintResponse(type="none")
+
+        if otype == "reminder":
+            reminder = await db.get_upcoming_reminder(user_id)
+            forced_pid = override.get("forced_payment_id")
+            if forced_pid:
+                payments = await db.get_scheduled_payments(user_id)
+                forced_p = next((p for p in payments if p["id"] == forced_pid), None)
+                if forced_p and reminder:
+                    d = {
+                        "type": "reminder",
+                        "payment_id": forced_p["id"],
+                        "name": forced_p["name"],
+                        "amount": forced_p["amount"],
+                        "days_until_due": reminder.get("days_until_due", 2),
+                        "is_overdue": False,
+                        "urgency": reminder.get("urgency", "upcoming"),
+                        "label": override.get("custom_text") or reminder.get("label", "скоро"),
+                        "payment_type": forced_p.get("payment_type", "subscription"),
+                    }
+                    return _resp(d)
+            if reminder is not None:
+                d = {
+                    "type": "reminder",
+                    "payment_id": reminder["id"],
+                    "name": reminder["name"],
+                    "amount": reminder["amount"],
+                    "days_until_due": reminder["days_until_due"],
+                    "is_overdue": reminder["is_overdue"],
+                    "urgency": reminder["urgency"],
+                    "label": reminder["label"],
+                    "payment_type": reminder.get("payment_type", "subscription"),
+                }
+                if override.get("custom_text"):
+                    d["name"] = override["custom_text"]
+                    d["label"] = override["custom_text"]
+                if override.get("custom_cta"):
+                    d["label"] = override["custom_cta"]
+                return _resp(d)
+            return HintResponse(type="none")
+
+        if otype == "vygoda":
+            forced_oid = override.get("forced_offer_id")
+            if forced_oid:
+                all_offers = await db.get_available_offers(user_id)
+                forced_offer = next((o for o in all_offers if o["offer_id"] == forced_oid), None)
+                if forced_offer:
+                    offer_text = override.get("custom_text") or forced_offer.get("label", forced_offer["offer_id"])
+                    d = {
+                        "type": "vygoda",
+                        "offer_id": forced_offer["offer_id"],
+                        "offer_text": offer_text,
+                        "offer_cta": override.get("custom_cta") or "Подробнее →",
+                        "offer_action": override.get("custom_action") or forced_offer.get("offer_id", ""),
+                    }
+                    return _resp(d)
+            offer = await db.get_vygoda_offer(user_id)
+            if offer is not None:
+                d = {
+                    "type": "vygoda",
+                    "offer_id": offer["offer_id"],
+                    "offer_text": offer["offer_text"],
+                    "offer_cta": offer["offer_cta"],
+                    "offer_action": offer["offer_action"],
+                }
+                if override.get("custom_text"):
+                    d["offer_text"] = override["custom_text"]
+                if override.get("custom_cta"):
+                    d["offer_cta"] = override["custom_cta"]
+                if override.get("custom_action"):
+                    d["offer_action"] = override["custom_action"]
+                return _resp(d)
+            return HintResponse(type="none")
+
+        if otype == "neutral":
+            return HintResponse(type="none")
+
+    reminder_enabled = True
+    vygoda_enabled = True
+    if override and override.get("hint_type") == "auto":
+        reminder_enabled = bool(override.get("reminder_enabled", 1))
+        vygoda_enabled = bool(override.get("vygoda_enabled", 1))
+
+    if reminder_enabled:
+        reminder = await db.get_upcoming_reminder(user_id)
+        if reminder is not None:
+            d = {
+                "type": "reminder",
+                "payment_id": reminder["id"],
+                "name": reminder["name"],
+                "amount": reminder["amount"],
+                "days_until_due": reminder["days_until_due"],
+                "is_overdue": reminder["is_overdue"],
+                "urgency": reminder["urgency"],
+                "label": reminder["label"],
+                "payment_type": reminder.get("payment_type", "subscription"),
+            }
+            return _resp(d)
+
+    if vygoda_enabled:
+        offer = await db.get_vygoda_offer(user_id)
+        if offer is not None:
+            d = {
+                "type": "vygoda",
+                "offer_id": offer["offer_id"],
+                "offer_text": offer["offer_text"],
+                "offer_cta": offer["offer_cta"],
+                "offer_action": offer["offer_action"],
+            }
+            if override and override.get("custom_text"):
+                d["offer_text"] = override["custom_text"]
+            if override and override.get("custom_cta"):
+                d["offer_cta"] = override["custom_cta"]
+            if override and override.get("custom_action"):
+                d["offer_action"] = override["custom_action"]
+            return _resp(d)
+
+    return HintResponse(type="none")
 
 
 @app.get("/health")
@@ -1010,6 +1321,7 @@ async def command(req: CommandRequest, user_id: str = Depends(_get_user_from_ban
             recipient_display_name=display_name,
             recipient_phone=recipient_phone,
             recipient_banks=recipient_banks,
+            comment=req.comment,
             fee=0.0,
             timestamp=ts,
         )
@@ -1046,6 +1358,33 @@ async def command(req: CommandRequest, user_id: str = Depends(_get_user_from_ban
             requires_manual_input=requires_manual,
             topup_phone=formatted_phone,
             operator=operator,
+            fee=0.0,
+            timestamp=ts,
+        )
+
+    # --- pay_scheduled ---
+    elif req.intent == "pay_scheduled":
+        if not req.payment_id:
+            raise HTTPException(status_code=422, detail="Укажите payment_id")
+        payments = await db.get_scheduled_payments(user_id)
+        payment = next((p for p in payments if p["id"] == req.payment_id), None)
+        if payment is None:
+            raise HTTPException(status_code=404, detail="Платёж не найден")
+        amount = req.amount or payment["amount"]
+        await db.create_pending(
+            txn_id=txn_id, user_id=user_id, intent="payment", amount=amount,
+            display_name=payment["name"], phone=None, requires_manual_input=False,
+        )
+        _log.info("command pay_scheduled: user=%s txn=%s name=%s amount=%.2f",
+                  user_id, txn_id, payment["name"], amount)
+        return ConfirmationResponse(
+            transaction_id=txn_id,
+            intent="payment",
+            title="Оплата",
+            subtitle=payment["name"],
+            amount=amount,
+            source_accounts=accounts,
+            default_account_id=default_acc_id,
             fee=0.0,
             timestamp=ts,
         )
@@ -1118,6 +1457,18 @@ async def confirm(transaction_id: str, req: ConfirmRequest, user_id: str = Depen
             timestamp=ts,
         )
 
+    elif intent == "payment":
+        service = pending.get("display_name") or "Услуга"
+        return OperationResult(
+            transaction_id=transaction_id,
+            status="success",
+            title="Платёж выполнен",
+            message=f"{service} — {amount:,.0f} ₽ списано",
+            source_account_name=source_account["name"],
+            balance_after=balance_after,
+            timestamp=ts,
+        )
+
     raise HTTPException(status_code=500, detail="Внутренняя ошибка")
 
 
@@ -1147,6 +1498,277 @@ async def transactions(
     """История операций из БД: seed-записи + новые после каждого /confirm."""
     items = await db.get_transactions(user_id, limit=limit)
     return TransactionsResponse(transactions=items, count=len(items))
+
+
+# ---------------------------------------------------------------------------
+# Dashboard — /dashboard (Basic Auth)
+# ---------------------------------------------------------------------------
+
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard(_: None = Depends(_check_dashboard_auth)):
+    """Analytics dashboard — protected by HTTP Basic Auth."""
+    html_path = Path(__file__).parent / "dashboard.html"
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
+@app.get("/dashboard/stats", include_in_schema=False)
+async def dashboard_stats(_: None = Depends(_check_dashboard_auth)):
+    """JSON stats endpoint for dashboard frontend."""
+    return await db.get_dashboard_stats()
+
+
+# ---------------------------------------------------------------------------
+# Dashboard — Hints management (/dashboard/hints, Basic Auth)
+# ---------------------------------------------------------------------------
+
+@app.get("/dashboard/hints", response_class=HTMLResponse, include_in_schema=False)
+def dashboard_hints_page(_: None = Depends(_check_dashboard_auth)):
+    """Hints management page — protected by HTTP Basic Auth."""
+    html_path = Path(__file__).parent / "hints.html"
+    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+
+
+@app.get("/dashboard/hints/api", include_in_schema=False)
+async def dashboard_hints_api(_: None = Depends(_check_dashboard_auth)):
+    """Return all users with their current hint state and override."""
+    users = await db.get_all_users_brief()
+    result = []
+    for u in users:
+        uid = u["user_id"]
+        override = await db.get_hint_override(uid)
+        hint = await _compute_hint_for_user(uid)
+        result.append({
+            **u,
+            "override": override,
+            "current_hint": hint,
+        })
+    return result
+
+
+@app.get("/dashboard/hints/api/search", include_in_schema=False)
+async def dashboard_hints_search(q: str = "", _: None = Depends(_check_dashboard_auth)):
+    """Search users by name or ID."""
+    if not q.strip():
+        users = await db.get_all_users_brief()
+    else:
+        users = await db.search_users(q.strip())
+    result = []
+    for u in users:
+        uid = u["user_id"]
+        override = await db.get_hint_override(uid)
+        hint = await _compute_hint_for_user(uid)
+        result.append({
+            **u,
+            "override": override,
+            "current_hint": hint,
+        })
+    return result
+
+
+@app.get("/dashboard/hints/api/{user_id}", include_in_schema=False)
+async def dashboard_hints_user_detail(user_id: str, _: None = Depends(_check_dashboard_auth)):
+    """Return detailed hint state for a specific user."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    override = await db.get_hint_override(user_id)
+    hint = await _compute_hint_for_user(user_id)
+    offers = await db.get_available_offers(user_id)
+    payments = await db.get_available_payments(user_id)
+    return {
+        "user_id": user_id,
+        "full_name": user["full_name"],
+        "display_name": user["display_name"],
+        "segment": user["segment"],
+        "age": user["age"],
+        "is_salary_client": bool(user.get("is_salary_client")),
+        "active_products": user.get("active_products", []),
+        "override": override,
+        "current_hint": hint,
+        "available_offers": offers,
+        "available_payments": payments,
+    }
+
+
+class HintOverrideRequest(BaseModel):
+    hint_type: str = "auto"
+    reminder_enabled: bool = True
+    vygoda_enabled: bool = True
+    forced_offer_id: Optional[str] = None
+    forced_payment_id: Optional[str] = None
+    custom_text: Optional[str] = None
+    custom_cta: Optional[str] = None
+    custom_action: Optional[str] = None
+
+
+@app.put("/dashboard/hints/api/{user_id}", include_in_schema=False)
+async def dashboard_hints_set_override(user_id: str, req: HintOverrideRequest, _=Depends(_check_dashboard_auth)):
+    """Create or update hint override for a user."""
+    user = await db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if req.hint_type not in ("auto", "reminder", "vygoda", "neutral", "none"):
+        raise HTTPException(status_code=400, detail="Invalid hint_type. Must be one of: auto, reminder, vygoda, neutral, none")
+    override = await db.set_hint_override(
+        user_id=user_id,
+        hint_type=req.hint_type,
+        reminder_enabled=req.reminder_enabled,
+        vygoda_enabled=req.vygoda_enabled,
+        forced_offer_id=req.forced_offer_id,
+        forced_payment_id=req.forced_payment_id,
+        custom_text=req.custom_text,
+        custom_cta=req.custom_cta,
+        custom_action=req.custom_action,
+    )
+    hint = await _compute_hint_for_user(user_id)
+    return {"override": override, "current_hint": hint}
+
+
+@app.delete("/dashboard/hints/api/{user_id}", include_in_schema=False)
+async def dashboard_hints_delete_override(user_id: str, _=Depends(_check_dashboard_auth)):
+    """Delete hint override for a user (revert to auto)."""
+    deleted = await db.delete_hint_override(user_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No override found for this user")
+    hint = await _compute_hint_for_user(user_id)
+    return {"deleted": True, "current_hint": hint}
+
+
+async def _compute_hint_for_user(user_id: str) -> dict:
+    """Compute the current hint for a user (same logic as GET /hint but returns dict with widget_text)."""
+    override = await db.get_hint_override(user_id)
+
+    if override:
+        otype = override.get("hint_type", "auto")
+
+        if otype == "none":
+            custom = override.get("custom_text")
+            if custom:
+                d = {"type": "custom", "label": custom}
+                d["widget_text"] = _compute_widget_text(d)
+                return d
+            return {"type": "none", "widget_text": None}
+
+        if otype == "reminder":
+            reminder = await db.get_upcoming_reminder(user_id)
+            forced_pid = override.get("forced_payment_id")
+            if forced_pid:
+                payments = await db.get_scheduled_payments(user_id)
+                forced_p = next((p for p in payments if p["id"] == forced_pid), None)
+                if forced_p and reminder:
+                    d = {
+                        "type": "reminder",
+                        "payment_id": forced_p["id"],
+                        "name": forced_p["name"],
+                        "amount": forced_p["amount"],
+                        "days_until_due": reminder.get("days_until_due", 2),
+                        "is_overdue": False,
+                        "urgency": reminder.get("urgency", "upcoming"),
+                        "label": override.get("custom_text") or reminder.get("label", "скоро"),
+                        "payment_type": forced_p.get("payment_type", "subscription"),
+                    }
+                    d["widget_text"] = _compute_widget_text(d)
+                    return d
+            if reminder is not None:
+                d = {
+                    "type": "reminder",
+                    "payment_id": reminder["id"],
+                    "name": reminder["name"],
+                    "amount": reminder["amount"],
+                    "days_until_due": reminder["days_until_due"],
+                    "is_overdue": reminder["is_overdue"],
+                    "urgency": reminder["urgency"],
+                    "label": reminder["label"],
+                    "payment_type": reminder.get("payment_type", "subscription"),
+                }
+                if override.get("custom_text"):
+                    d["name"] = override["custom_text"]
+                    d["label"] = override["custom_text"]
+                d["widget_text"] = _compute_widget_text(d)
+                return d
+            return {"type": "none", "widget_text": None}
+
+        if otype == "vygoda":
+            forced_oid = override.get("forced_offer_id")
+            if forced_oid:
+                all_offers = await db.get_available_offers(user_id)
+                forced_offer = next((o for o in all_offers if o["offer_id"] == forced_oid), None)
+                if forced_offer:
+                    offer_text = override.get("custom_text") or forced_offer.get("label", forced_offer["offer_id"])
+                    d = {
+                        "type": "vygoda",
+                        "offer_id": forced_offer["offer_id"],
+                        "offer_text": offer_text,
+                        "offer_cta": override.get("custom_cta") or "Подробнее →",
+                        "offer_action": override.get("custom_action") or forced_offer.get("offer_id", ""),
+                    }
+                    d["widget_text"] = _compute_widget_text(d)
+                    return d
+            offer = await db.get_vygoda_offer(user_id)
+            if offer:
+                d = {
+                    "type": "vygoda",
+                    "offer_id": offer["offer_id"],
+                    "offer_text": offer["offer_text"],
+                    "offer_cta": offer["offer_cta"],
+                    "offer_action": offer["offer_action"],
+                }
+                if override.get("custom_text"):
+                    d["offer_text"] = override["custom_text"]
+                if override.get("custom_cta"):
+                    d["offer_cta"] = override["custom_cta"]
+                if override.get("custom_action"):
+                    d["offer_action"] = override["custom_action"]
+                d["widget_text"] = _compute_widget_text(d)
+                return d
+            return {"type": "none", "widget_text": None}
+
+        if otype == "neutral":
+            return {"type": "none", "widget_text": None}
+
+    reminder_enabled = True
+    vygoda_enabled = True
+    if override and override.get("hint_type") == "auto":
+        reminder_enabled = bool(override.get("reminder_enabled", 1))
+        vygoda_enabled = bool(override.get("vygoda_enabled", 1))
+
+    if reminder_enabled:
+        reminder = await db.get_upcoming_reminder(user_id)
+        if reminder is not None:
+            d = {
+                "type": "reminder",
+                "payment_id": reminder["id"],
+                "name": reminder["name"],
+                "amount": reminder["amount"],
+                "days_until_due": reminder["days_until_due"],
+                "is_overdue": reminder["is_overdue"],
+                "urgency": reminder["urgency"],
+                "label": reminder["label"],
+                "payment_type": reminder.get("payment_type", "subscription"),
+            }
+            d["widget_text"] = _compute_widget_text(d)
+            return d
+
+    if vygoda_enabled:
+        offer = await db.get_vygoda_offer(user_id)
+        if offer:
+            d = {
+                "type": "vygoda",
+                "offer_id": offer["offer_id"],
+                "offer_text": offer["offer_text"],
+                "offer_cta": offer["offer_cta"],
+                "offer_action": offer["offer_action"],
+            }
+            if override and override.get("custom_text"):
+                d["offer_text"] = override["custom_text"]
+            if override and override.get("custom_cta"):
+                d["offer_cta"] = override["custom_cta"]
+            if override and override.get("custom_action"):
+                d["offer_action"] = override["custom_action"]
+            d["widget_text"] = _compute_widget_text(d)
+            return d
+
+    return {"type": "none", "widget_text": None}
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 ## Что здесь строится
 
 **VTB Vita** — голосовой/текстовый виджет на главном экране Android.
-Одна фраза → перевод / баланс / пополнение телефона — без открытия приложения.
+Одна фраза → перевод / баланс / пополнение телефона / оплата планового платежа — без открытия приложения.
 
 Этот репозиторий — **standalone Android-прототип** для демонстрации на защите 19 апреля 2026.
 Это НЕ интеграция с реальным ВТБ. Все банковские данные — mock. NLP — локальный сервис.
@@ -32,8 +32,8 @@
 | Компонент | Технология | Владелец |
 |-----------|-----------|---------|
 | Android Widget + UI | Kotlin + AppWidget API (RemoteViews) | Денис |
-| NLP / Intent Parser | Python (FastAPI) + DeepSeek API (прототип) / self-hosted (продакшен ВТБ) | Яна |
-| Mock Backend | часть Android-приложения или отдельный сервис | Денис + Яна |
+| NLP / Intent Parser | Python (FastAPI) + LLM cascade (DeepSeek → OpenRouter) | Яна + Денис |
+| Mock Backend | Python (FastAPI) + SQLite (aiosqlite) | Денис |
 
 > Стек фиксируется в задаче **C-01**. До её закрытия таблица выше — предложение, не факт.
 > После фиксации — обновить этот файл.
@@ -76,8 +76,7 @@ README.md    — обзор для людей
 
 1. **Никаких реальных банковских API** — только mock-данные
 2. **Никаких реальных персональных данных** в коде, тестах, конфигах
-3. **Биометрия в прототипе** — имитация (UI-заглушка, не настоящий BiometricPrompt)
-4. **Никаких секретов в коде** — API-ключи, токены только через env/local.properties
+3. **Никаких секретов в коде** — API-ключи, токены только через env/local.properties
 
 ---
 
@@ -112,5 +111,15 @@ README.md    — обзор для людей
 
 - Точка входа Android-приложения: `android/app/src/main/`
 - Виджет-провайдер: ищи `VitaWidgetProvider` (AppWidgetProvider)
-- NLP-сервис: `ml/` — FastAPI-приложение, endpoint `POST /parse`
-- Mock-данные: `android/app/src/main/assets/mock/` или аналог
+- NLP-сервис: `ml/` — FastAPI-приложение, endpoints: `POST /parse`, `GET /hint`, `POST /command`, `POST /confirm`
+- Mock API с SQLite: `ml/mock_api/db.py` (9 таблиц, aiosqlite), `ml/mock_api/schema.sql` (DDL)
+- Dashboard аналитики: `ml/mock_api/dashboard.html` + `GET /dashboard/stats`
+- Dashboard подсказок: `ml/mock_api/hints.html` + `/dashboard/hints/api`
+- Hint логика: `db.get_upcoming_reminder()`, `db.get_vygoda_offer()`, `db.get_available_offers()`
+- LLM cascade: `_LLM_PROVIDERS` в `main.py` — DeepSeek прямой → OpenRouter → unknown
+- Mock-данные: сидируются через `seed.py` в SQLite (`vita.db`)
+- Personalization module: `personalization/HintRepository.kt` (серверный hint + offline fallback), `NeutralHints.kt` (пул фраз), `WidgetHintTexts.kt` (форматирование)
+- OmegaSheetScaffold: единый bottom-sheet контейнер — все виджет-плашки используют его (scrim + handle + TopBar + content + footer)
+- MockBankRepository: локальные mock-данные для UI — `AvatarPalette`, `detectOperator`, `MOCK_ACCOUNTS/OPERATORS`
+- Tone of Voice: `docs/TONE_OF_VOICE.md` — утверждённая тональность (друг-финансист, «ты», строчные, без эмодзи)
+- Design Audit: `docs/DESIGN_IMPROVEMENTS.md` — план правок UI (S-1..S-10)

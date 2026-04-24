@@ -5,35 +5,36 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.vtbvita.widget.nlp.ContactCandidate
 import com.vtbvita.widget.nlp.ContactMatcher
 import com.vtbvita.widget.nlp.ContactMemory
+import com.vtbvita.widget.ui.components.OmegaAvatar
 import com.vtbvita.widget.ui.components.OmegaButton
 import com.vtbvita.widget.ui.components.OmegaButtonStyle
-import com.vtbvita.widget.ui.components.OmegaSheetHeader
+import com.vtbvita.widget.ui.components.OmegaSheetScaffold
 import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
-import com.vtbvita.widget.ui.theme.OmegaChip
-import com.vtbvita.widget.ui.theme.OmegaScrim
-import com.vtbvita.widget.ui.theme.OmegaSurface
+import com.vtbvita.widget.ui.theme.OmegaSize
+import com.vtbvita.widget.ui.theme.OmegaSpacing
 import com.vtbvita.widget.ui.theme.OmegaTextPrimary
 import com.vtbvita.widget.ui.theme.OmegaTextSecondary
+import com.vtbvita.widget.ui.theme.OmegaType
 import com.vtbvita.widget.ui.theme.VTBVitaTheme
 
 class ContactDisambiguationActivity : ComponentActivity() {
@@ -104,53 +105,31 @@ private fun DisambiguationSheet(
     onOtherContact: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(OmegaScrim)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss
-            ),
-        contentAlignment = Alignment.BottomCenter
+    OmegaSheetScaffold(
+        title = "Кому",
+        onDismiss = onDismiss,
+        onBack = null,
+        onClose = onDismiss,
+        footer = {
+            OmegaButton(
+                text = "Другой получатель",
+                style = OmegaButtonStyle.Neutral,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onOtherContact
+            )
+        }
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(OmegaSurface)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { }
+        LazyColumn(
+            contentPadding = PaddingValues(vertical = OmegaSpacing.xs),
+            modifier = Modifier.heightIn(max = 360.dp)
         ) {
-            OmegaSheetHeader(title = "Кому переводим?")
-
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                modifier = Modifier.heightIn(max = 480.dp)
-            ) {
-                items(candidates) { candidate ->
-                    val pickCount = pickCounts[candidate.phone] ?: 0
-                    CandidateRow(
-                        candidate = candidate,
-                        pickCount = pickCount,
-                        onClick = { onContactSelected(candidate) }
-                    )
-                }
-                item {
-                    Spacer(Modifier.height(12.dp))
-                    OmegaButton(
-                        text = "Другой получатель",
-                        style = OmegaButtonStyle.Brand,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 8.dp),
-                        onClick = onOtherContact
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
+            items(candidates) { candidate ->
+                val pickCount = pickCounts[candidate.phone] ?: 0
+                CandidateRow(
+                    candidate = candidate,
+                    pickCount = pickCount,
+                    onClick = { onContactSelected(candidate) }
+                )
             }
         }
     }
@@ -166,44 +145,30 @@ private fun CandidateRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
+            .padding(vertical = OmegaSpacing.sm + OmegaSpacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(OmegaChip),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = candidate.displayName.firstOrNull()?.uppercase() ?: "#",
-                color = OmegaTextPrimary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp
-            )
-        }
-        Spacer(Modifier.width(12.dp))
+        OmegaAvatar(name = candidate.displayName, avatarSize = OmegaSize.avatarMd)
+        Spacer(Modifier.width(OmegaSpacing.md))
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     candidate.displayName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = OmegaTextPrimary,
-                    fontWeight = FontWeight.Medium
+                    style = OmegaType.BodyTightSemiBoldL,
+                    color = OmegaTextPrimary
                 )
                 if (pickCount > 0) {
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(OmegaSpacing.xs))
                     Text(
                         text = if (pickCount >= ContactMemory.AUTO_RESOLVE_AT) "★" else "↑",
-                        fontSize = 11.sp,
+                        style = OmegaType.BodyTightM,
                         color = OmegaBrandPrimary
                     )
                 }
             }
             Text(
                 ContactMatcher.maskPhone(candidate.phone),
-                style = MaterialTheme.typography.bodySmall,
+                style = OmegaType.BodyTightM,
                 color = OmegaTextSecondary
             )
         }

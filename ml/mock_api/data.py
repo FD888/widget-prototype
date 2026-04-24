@@ -278,6 +278,7 @@ _VITYA = {
             "category": "Подписки",
             "mcc": "5815",
             "status": "Active",
+            "payment_type": "subscription",
         },
         {
             "id": "SUB_V02",
@@ -287,6 +288,7 @@ _VITYA = {
             "category": "Подписки",
             "mcc": "5815",
             "status": "Active",
+            "payment_type": "subscription",
         },
     ],
     "transactions": [
@@ -598,19 +600,21 @@ _OLGA = {
             "id": "SUB_O01",
             "name": "ТТК Интернет",
             "amount": 690.00,
-            "day_of_month": 8,
+            "day_of_month": 24,      # 24-е — через 2 дня от 22 апреля
             "category": "Интернет",
             "mcc": "4900",
-            "status": "Overdue",   # ← ЗАБЫТЫЙ ПЛАТЁЖ — боль персоны!
+            "status": "Active",
+            "payment_type": "autopayment",
         },
         {
             "id": "SUB_O02",
             "name": "Ипотека ВТБ",
             "amount": 38_500.00,
-            "day_of_month": 5,
+            "day_of_month": 28,      # 28-е — вне окна напоминания (>3 дней)
             "category": "Ипотека",
             "mcc": "4900",
             "status": "Active",
+            "payment_type": "loan",
         },
         {
             "id": "SUB_O03",
@@ -620,6 +624,7 @@ _OLGA = {
             "category": "ЖКХ",
             "mcc": "4900",
             "status": "Active",
+            "payment_type": "autopayment",
         },
         {
             "id": "SUB_O04",
@@ -629,6 +634,7 @@ _OLGA = {
             "category": "Подписки",
             "mcc": "5815",
             "status": "Active",
+            "payment_type": "subscription",
         },
     ],
     "transactions": [
@@ -948,6 +954,16 @@ _ARTYOM = {
     },
     "scheduled_payments": [
         {
+            "id": "CC_A01",
+            "name": "Кредитная карта ВТБ",
+            "amount": 2_700.00,      # минимальный платёж
+            "day_of_month": 24,      # 24-е — через 2 дня от 22 апреля
+            "category": "Кредиты",
+            "mcc": None,
+            "status": "Active",
+            "payment_type": "credit_card",
+        },
+        {
             "id": "SUB_A01",
             "name": "FitBox Premium",
             "amount": 3_500.00,
@@ -955,6 +971,7 @@ _ARTYOM = {
             "category": "Спорт",
             "mcc": "7941",
             "status": "Active",
+            "payment_type": "subscription",
         },
         {
             "id": "SUB_A02",
@@ -964,6 +981,7 @@ _ARTYOM = {
             "category": "Подписки",
             "mcc": "5815",
             "status": "Active",
+            "payment_type": "subscription",
         },
         {
             "id": "SUB_A03",
@@ -973,16 +991,18 @@ _ARTYOM = {
             "category": "Подписки",
             "mcc": "5815",
             "status": "Active",
+            "payment_type": "subscription",
         },
         {
             "id": "SUB_A04",
             "name": "Репетитор Тамара",
             "amount": 2_000.00,
-            "day_of_month": None,  # каждый вторник — нерегулярно
+            "day_of_month": None,
             "weekday": "tuesday",
             "category": "Образование",
             "mcc": "8299",
             "status": "Active",
+            "payment_type": "subscription",
         },
     ],
     "transactions": [
