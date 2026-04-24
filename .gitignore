@@ -55,3 +55,4 @@ design-assets/
 *.db
 *.db-wal
 *.db-shm
+.opencode/
