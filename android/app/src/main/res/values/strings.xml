@@ -6,4 +6,46 @@
     <string name="action_transfer">Перевод</string>
     <string name="action_balance">Баланс</string>
     <string name="action_topup">Пополнить</string>
+
+    <!-- Widget accessibility -->
+    <string name="a11y_widget_mic">Начать голосовую команду</string>
+    <string name="a11y_widget_cancel_rec">Отменить запись</string>
+    <string name="a11y_widget_stop">Отменить подготовку</string>
+    <string name="a11y_widget_submit">Отправить голосовую команду</string>
+    <string name="a11y_widget_success">Успешно</string>
+    <string name="a11y_widget_preparing">Подготовка записи</string>
+    <string name="a11y_widget_idle_prompt">VTB Vita: коснитесь для ввода или нажмите микрофон для голоса</string>
+
+    <!-- Compose accessibility -->
+    <string name="a11y_success">Успех</string>
+    <string name="a11y_search">Поиск</string>
+    <string name="a11y_mic_voice">Начать запись голоса</string>
+    <string name="a11y_card_image">Изображение карты</string>
+    <string name="a11y_cancel">Отмена</string>
+    <string name="a11y_send">Отправить</string>
+    <string name="a11y_back">Назад</string>
+    <string name="a11y_close">Закрыть</string>
+    <string name="a11y_info">Информация</string>
+    <string name="a11y_clear">Очистить</string>
+    <string name="a11y_biometry">Войти по биометрии</string>
+    <string name="a11y_logout">Выйти</string>
+    <string name="a11y_open_vita">Открыть Vita</string>
+    <string name="a11y_fingerprint">Отпечаток пальца</string>
+    <string name="a11y_card_arrow">Подробнее о карте</string>
+    <string name="a11y_payment_system">Платёжная система %s</string>
+    <string name="a11y_operator">Оператор %s</string>
+    <string name="a11y_search_icon">Поиск по контактам</string>
+    <string name="a11y_chevron_right">Подробнее</string>
+    <string name="a11y_pin_dots">PIN: введено %1$d из 4 цифр</string>
+    <string name="a11y_pin_error">Ошибка PIN</string>
+    <string name="a11y_delete">Удалить</string>
+    <string name="a11y_selected">выбрано</string>
+    <string name="a11y_not_selected">не выбрано</string>
+    <string name="a11y_handle_bar">Панель для перетаскивания</string>
+    <string name="a11y_scrim">Закрыть</string>
+    <string name="a11y_banner_reminder">Напоминание о платеже</string>
+    <string name="a11y_banner_vygoda">Предложение ВЫГОДА</string>
+    <string name="a11y_page">Страница %1$d из %2$d</string>
+    <string name="a11y_show_all">Показать все счета</string>
+    <string name="a11y_account_switcher">Изменить счёт списания</string>
 </resources>

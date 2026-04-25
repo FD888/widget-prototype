@@ -21,6 +21,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import com.vtbvita.widget.R
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.AccountInfo
@@ -371,7 +376,7 @@ private fun ContactSelectionSheet(
                 } else {
                     Icon(
                         painter = androidx.compose.ui.res.painterResource(R.drawable.ic_magnifier),
-                        contentDescription = null,
+                        contentDescription = "Поиск",
                         tint = OmegaTextSecondary,
                         modifier = Modifier.size(18.dp)
                     )
@@ -436,6 +441,7 @@ private fun ContactCandidateRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
+            .semantics { role = Role.Button }
             .padding(vertical = OmegaSpacing.md + OmegaSpacing.xs),
         verticalAlignment = Alignment.CenterVertically
     ) {

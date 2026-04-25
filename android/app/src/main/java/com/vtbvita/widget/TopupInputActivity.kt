@@ -237,7 +237,7 @@ private fun TopupSheet(
                     opLogoRes != 0 -> ({
                         Image(
                             painter = painterResource(opLogoRes),
-                            contentDescription = null,
+                            contentDescription = operator,
                             modifier = Modifier.size(48.dp).clip(CircleShape),
                             contentScale = ContentScale.Fit
                         )

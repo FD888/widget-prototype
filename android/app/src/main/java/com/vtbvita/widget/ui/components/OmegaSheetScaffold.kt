@@ -32,6 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.vtbvita.widget.ui.theme.OmegaSize
 import com.vtbvita.widget.ui.theme.OmegaSpacing
@@ -58,6 +62,9 @@ fun OmegaSheetScaffold(
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.5f))
+            .semantics {
+                contentDescription = title.ifBlank { "Панель" }
+            }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -107,6 +114,9 @@ fun OmegaSheetScaffold(
                                     .height(OmegaSpacing.xs)
                                     .clip(RoundedCornerShape(OmegaSpacing.xxs))
                                     .background(TitanGray.v700)
+                                    .clearAndSetSemantics {
+                                        contentDescription = "Панель для перетаскивания"
+                                    }
                             )
                         }
                     }

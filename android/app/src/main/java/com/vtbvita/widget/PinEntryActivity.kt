@@ -19,6 +19,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -178,6 +187,7 @@ fun PinEntryScreen(
                         .height(OmegaSpacing.xs)
                         .clip(RoundedCornerShape(OmegaSpacing.xxs))
                         .background(TitanGray.v700)
+                        .clearAndSetSemantics { contentDescription = "Панель" }
                 )
             }
 
@@ -191,7 +201,10 @@ fun PinEntryScreen(
             Spacer(Modifier.height(OmegaSpacing.xl))
 
             // PIN dots
-            Row(horizontalArrangement = Arrangement.spacedBy(OmegaSpacing.md)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(OmegaSpacing.md),
+                modifier = Modifier.semantics { contentDescription = "PIN: введено ${pin.length} из 4 цифр" }
+            ) {
                 repeat(4) { i ->
                     val filled = i < pin.length
                     val dotColor = when {
@@ -211,7 +224,8 @@ fun PinEntryScreen(
 
             Box(modifier = Modifier.height(OmegaSpacing.xl)) {
                 if (errorMsg.isNotBlank()) {
-                    Text(errorMsg, fontSize = 13.sp, color = OmegaError)
+                    Text(errorMsg, fontSize = 13.sp, color = OmegaError,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
                 }
             }
 
@@ -259,7 +273,8 @@ fun PinEntryScreen(
                                 activity = activity!!,
                                 onSuccess = { loginWithBiometric() }
                             )
-                        },
+                        }
+                        .semantics { role = Role.Button },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -308,7 +323,11 @@ fun PinKey(
                 indication = ripple(bounded = true),
                 enabled = enabled,
                 onClick = onClick
-            ),
+            )
+            .semantics {
+                role = Role.Button
+                contentDescription = if (label == "⌫") "Удалить" else label
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(

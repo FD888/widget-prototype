@@ -28,6 +28,12 @@ import androidx.compose.ui.unit.sp
 import com.vtbvita.widget.R
 import com.vtbvita.widget.api.MockApiService
 import com.vtbvita.widget.model.AccountInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.vtbvita.widget.ui.theme.GalaxyPurple
 import com.vtbvita.widget.ui.theme.OmegaBackground
 import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
@@ -182,6 +188,11 @@ fun MockBankScreen(personaId: String, initialTab: Int = 0, chatPrefillText: Stri
                     modifier = Modifier
                         .clickable { selectedTab = i }
                         .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .semantics {
+                            role = Role.Tab
+                            stateDescription = if (i == selectedTab) "Выбрано" else "Не выбрано"
+                            contentDescription = label
+                        }
                 ) {
                     Box(
                         modifier = Modifier
@@ -229,7 +240,7 @@ fun MainTab(context: Context) {
                 style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
                 color = OmegaTextPrimary,
-                modifier = Modifier.padding(bottom = 4.dp)
+                modifier = Modifier.padding(bottom = 4.dp).semantics { heading() }
             )
         }
         when {
@@ -265,7 +276,7 @@ fun MainTab(context: Context) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = OmegaBrandPrimary)
             ) {
-                Icon(painter = painterResource(R.drawable.ic_mic), contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(painter = painterResource(R.drawable.ic_mic), contentDescription = "Открыть Vita", modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("Открыть Vita")
             }
@@ -313,7 +324,7 @@ private fun WidgetSettingsCard(context: Context) {
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_fingerprint),
-                    contentDescription = null,
+                    contentDescription = "Биометрия",
                     tint = if (biometricAvailable) OmegaBrandPrimary else OmegaTextSecondary,
                     modifier = Modifier.size(22.dp)
                 )
@@ -370,7 +381,7 @@ fun AccountCard(account: AccountInfo) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     painter = painterResource(R.drawable.ic_card_arrow_right),
-                    contentDescription = null,
+                    contentDescription = typeLabel,
                     tint = OmegaTextOnBrand.copy(alpha = 0.7f),
                     modifier = Modifier.size(16.dp)
                 )
@@ -422,7 +433,8 @@ fun PaymentsTab(context: Context) {
                 "Платежи",
                 style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
-                color = OmegaTextPrimary
+                color = OmegaTextPrimary,
+                modifier = Modifier.semantics { heading() }
             )
         }
         item {
@@ -477,7 +489,7 @@ private fun PayCategoryCell(category: PayCategory, modifier: Modifier = Modifier
             ) {
                 Icon(
                     painter = painterResource(category.iconRes),
-                    contentDescription = null,
+                    contentDescription = category.label,
                     tint = OmegaBrandPrimary,
                     modifier = Modifier.size(22.dp)
                 )
@@ -515,7 +527,8 @@ fun ProductsTab(context: Context) {
                 "Продукты",
                 style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
-                color = OmegaTextPrimary
+                color = OmegaTextPrimary,
+                modifier = Modifier.semantics { heading() }
             )
         }
         items(products) { product ->
@@ -537,7 +550,7 @@ fun ProductsTab(context: Context) {
                     ) {
                         Icon(
                             painter = painterResource(product.iconRes),
-                            contentDescription = null,
+                            contentDescription = product.name,
                             tint = product.color,
                             modifier = Modifier.size(22.dp)
                         )
@@ -593,7 +606,8 @@ fun HistoryTab() {
                 "История операций",
                 style = OmegaType.HeadlineL,
                 fontWeight = FontWeight.Bold,
-                color = OmegaTextPrimary
+                color = OmegaTextPrimary,
+                modifier = Modifier.semantics { heading() }
             )
         }
         items(transactions) { tx ->
@@ -614,7 +628,7 @@ fun HistoryTab() {
                             .background(iconColor.copy(alpha = 0.12f), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(painter = painterResource(tx.iconRes), contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
+                        Icon(painter = painterResource(tx.iconRes), contentDescription = tx.title, tint = iconColor, modifier = Modifier.size(20.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -667,7 +681,8 @@ fun ChatTab(prefillText: String? = null) {
                     "Чат поддержки",
                     style = OmegaType.HeadlineL,
                     fontWeight = FontWeight.Bold,
-                    color = OmegaTextPrimary
+                    color = OmegaTextPrimary,
+                    modifier = Modifier.semantics { heading() }
                 )
             }
             item { ChatBubble(ChatMsg("Здравствуйте! Я — виртуальный ассистент ВТБ. Чем могу помочь?", fromBot = true)) }

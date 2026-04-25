@@ -50,6 +50,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import com.vtbvita.widget.R
 import com.vtbvita.widget.ui.theme.OmegaBrandGradientH
 import com.vtbvita.widget.ui.theme.OmegaBrandPrimary
@@ -252,6 +256,10 @@ private fun OmegaChip(
                 OmegaRadius.md
             )
             .clickable(onClick = onClick)
+            .semantics {
+                role = Role.Button
+                stateDescription = if (isSelected) "Выбрано" else "Не выбрано"
+            }
             .padding(horizontal = OmegaSpacing.md, vertical = OmegaSpacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(OmegaSpacing.xs)
@@ -402,6 +410,10 @@ fun OmegaAmountChip(
                 OmegaRadius.md
             )
             .clickable(onClick = onClick)
+            .semantics {
+                role = Role.Button
+                stateDescription = if (selected) "Выбрано" else "Не выбрано"
+            }
             .padding(horizontal = OmegaSpacing.lg, vertical = OmegaSpacing.md - 2.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -495,7 +507,7 @@ fun OmegaSuccessIcon(modifier: Modifier = Modifier) {
         )
         Icon(
             painter = painterResource(R.drawable.ic_success_check),
-            contentDescription = null,
+            contentDescription = "Успех",
             tint = Color.White,
             modifier = Modifier.size(32.dp)
         )
@@ -733,7 +745,7 @@ fun OmegaSearchField(
     ) {
         Icon(
             painter = painterResource(R.drawable.ic_search),
-            contentDescription = null,
+            contentDescription = "Поиск",
             tint = com.vtbvita.widget.ui.theme.OmegaTextSecondary,
             modifier = Modifier.size(20.dp)
         )
@@ -992,6 +1004,10 @@ fun AccountPickerSheet(
                         .clip(OmegaRadius.md)
                         .background(OmegaSurfaceAlt)
                         .clickable { onSelect(acc); onDismiss() }
+                        .semantics {
+                            role = Role.Button
+                            stateDescription = if (isSelected) "Выбрано" else "Не выбрано"
+                        }
                         .padding(horizontal = OmegaSpacing.md, vertical = OmegaSpacing.sm + OmegaSpacing.xs),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1056,7 +1072,7 @@ fun VtbCardWithBadge(
     Box(contentAlignment = Alignment.BottomEnd) {
         Image(
             painter = painterResource(vtbCardRes(accountType)),
-            contentDescription = null,
+            contentDescription = "Карта",
             modifier = Modifier.size(cardSize),
             contentScale = ContentScale.Fit
         )

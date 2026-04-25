@@ -50,6 +50,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.TextUnitType
@@ -622,7 +631,7 @@ private fun InputOverlay(
                         ) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_mic),
-                                contentDescription = null,
+                                contentDescription = "Начать запись голоса",
                                 tint = Color.White,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -661,7 +670,9 @@ private fun InputOverlay(
                     text = errorMsg,
                     color = OmegaError,
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    modifier = Modifier
+                        .padding(horizontal = 12.dp)
+                        .semantics { liveRegion = LiveRegionMode.Assertive }
                 )
             }
 
@@ -990,20 +1001,26 @@ private fun InlinePinOverlay(
             androidx.compose.material3.Text(
                 "Введите PIN",
                 color = OmegaTextPrimary,
-                fontSize = 15.sp
+                fontSize = 15.sp,
+                modifier = Modifier.semantics { heading() }
             )
             androidx.compose.material3.Text(
                 "Отмена",
                 color = OmegaTextSecondary,
                 fontSize = 13.sp,
-                modifier = Modifier.clickable(onClick = onCancel)
+                modifier = Modifier
+                    .clickable(onClick = onCancel)
+                    .semantics { role = Role.Button }
             )
         }
 
         Spacer(Modifier.height(14.dp))
 
         // 4 точки
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.semantics { contentDescription = "PIN: введено ${pin.length} из 4 цифр" }
+        ) {
             repeat(4) { i ->
                 Box(
                     modifier = Modifier
@@ -1022,7 +1039,8 @@ private fun InlinePinOverlay(
 
         if (errorMsg.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
-            androidx.compose.material3.Text(errorMsg, fontSize = 11.sp, color = OmegaError)
+            androidx.compose.material3.Text(errorMsg, fontSize = 11.sp, color = OmegaError,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive })
         }
 
         Spacer(Modifier.height(12.dp))
@@ -1095,6 +1113,7 @@ private fun ReminderBanner(hint: HintResult, onTap: () -> Unit) {
                 indication = null,
                 onClick = onTap
             )
+            .semantics { role = Role.Button; contentDescription = "Напоминание о платеже" }
     ) {
         Box(
             modifier = Modifier
@@ -1147,6 +1166,7 @@ private fun VygodaBanner(text: String, onTap: () -> Unit) {
                 indication = null,
                 onClick = onTap
             )
+            .semantics { role = Role.Button; contentDescription = "Предложение" }
     ) {
         Box(
             modifier = Modifier
