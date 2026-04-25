@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-24 (DI-02: sheet host framework, design audit implementation, personalization module)*
+*Последнее обновление: 2026-04-26 (DI-03: fix widget on Android 10 — RemoteViews compatibility)*
 
 ### Структура репозитория
 
@@ -25,7 +25,8 @@ widget-prototype/
 │       │   ├── TransferDetailsActivity.kt  ← шаг 2 перевода (сумма, банк, счёт)
 │       │   ├── TopupInputActivity.kt       ← пополнение телефона
 │       │   ├── SystemIntentHandler.kt      ← будильник / таймер / звонок / запуск приложения
-│       │   ├── SessionManager.kt           ← SharedPreferences-сессия
+│       │   ├── SessionManager.kt           ← EncryptedSharedPreferences-сессия (только из Activity)
+│       │   ├── WidgetState.kt              ← plain SharedPreferences: зеркало login-статуса для виджета
 │       │   ├── MainActivity.kt             ← выбор профиля (PERSONAS)
 │       │   ├── PinEntryActivity.kt         ← PIN-экран (4 цифры)
 │       │   ├── MockBankActivity.kt         ← mock банковское приложение
@@ -202,6 +203,9 @@ widget-prototype/
 | 2026-04-12 | TransferFlowActivity: единый модал NLP-флоу вместо ContactDisambiguationActivity + TransferDetailsActivity | Compose-state навигация внутри одной Activity; back из Confirmation → ContactSelection с inline-поиском; ContactPickerActivity-путь сохранён через TransferDetailsActivity |
 | 2026-04-12 | ContactMatcher: filterCandidates (gap≤0.4 от лидера, cap=5) + нормализация телефонов (8/+7) + memory авторезолв при pickCount≥3 | Устранены дубли контактов с разным форматом номера; список в disambiguation сужен до релевантных; ★-контакт обходит disambiguation |
 | 2026-04-11 | Multi-user архитектура: PIN → user_id → banking JWT содержит user_id | 3 персоны из исследования N=97: vitya(1111)/olga(2222)/artyom(3333); каждый endpoint роутится к USERS[user_id]; баланс уменьшается динамически при подтверждении |
+| 2026-04-26 | WidgetState (plain SharedPrefs) как зеркало login-статуса для виджета | EncryptedSharedPreferences бросает исключение из BroadcastReceiver-контекста на Android 10; виджет читает только plain prefs |
+| 2026-04-26 | setFloat("setAlpha") в RemoteViews заменён на setTextColor с alpha-каналом | Android 10 запрещает вызов setAlpha(float) через рефлексию для TextView в RemoteViews; вызов роняет виджет с ActionException |
+| 2026-04-26 | Иконки виджета: ic_cross_widget.xml, ic_arrow_widget.xml (белые копии) вместо android:tint | android:tint в RemoteViews layout не поддерживается до API 31; белый цвет задаётся напрямую в векторе |
 | 2026-04-11 | data.py — единый источник данных (single source of truth) | main.py импортирует USERS + PHONE_INDEX из data.py; inline MOCK_ACCOUNTS/MOCK_CONTACTS удалены; PHONE_INDEX глобальный по всем пользователям |
 | 2026-04-11 | /auth/biometric принимает user_id в теле запроса | Android знает выбранную персону → передаёт persona.id → сервер кодирует в JWT |
 | 2026-04-12 | Security hardening: usesCleartextTraffic=false + network_security_config.xml + allowBackup=false | Запрет HTTP, запрет резервного копирования данных приложения |

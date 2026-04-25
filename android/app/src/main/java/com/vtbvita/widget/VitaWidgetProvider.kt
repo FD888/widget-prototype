@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.view.View
 import android.widget.RemoteViews
 import com.vtbvita.widget.personalization.HintRepository
@@ -23,7 +24,12 @@ class VitaWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray
     ) {
         appWidgetIds.forEach {
-            appWidgetManager.updateAppWidget(it, defaultViews(context))
+            try {
+                appWidgetManager.updateAppWidget(it, defaultViews(context))
+            } catch (e: Exception) {
+                Timber.e(e, "widget: onUpdate failed for id=%d", it)
+                WidgetState.logError(context, "${e.javaClass.simpleName}: ${e.message}\n${e.stackTraceToString().take(800)}")
+            }
         }
     }
 
@@ -72,23 +78,20 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 setViewVisibility(R.id.fl_recording_submit, View.GONE)
                 setViewVisibility(R.id.iv_status_check, View.GONE)
 
-                val fullyLoggedIn = SessionManager.hasAppToken(context) && SessionManager.isLoggedIn(context)
+                val fullyLoggedIn = WidgetState.isLoggedIn(context)
                 if (fullyLoggedIn) {
-                    val persona = SessionManager.currentPersona(context)
+                    val personaId = WidgetState.getPersonaId(context)
+                    val persona = PERSONAS.find { it.id == personaId }
                     val hint = HintRepository.resolveHint(context, persona)
                     setTextViewText(R.id.tv_prompt, hint)
-                    setFloat(R.id.tv_prompt, "setAlpha", 0.90f)
-                    setFloat(R.id.capsule, "setAlpha", 1.0f)
-                    setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
+                    setTextColor(R.id.tv_prompt, Color.argb(230, 255, 255, 255))
                     setViewVisibility(R.id.btn_mic, View.VISIBLE)
                     setOnClickPendingIntent(R.id.tv_prompt, textInputPi(context))
                     setOnClickPendingIntent(R.id.btn_mic, voiceStartPi(context))
                     HintRepository.fetchAndApply(context)
                 } else {
                     setTextViewText(R.id.tv_prompt, "Войдите в приложение")
-                    setFloat(R.id.tv_prompt, "setAlpha", 0.75f)
-                    setFloat(R.id.capsule, "setAlpha", 0.7f)
-                    setFloat(R.id.capsule_bg, "setAlpha", 0.7f)
+                    setTextColor(R.id.tv_prompt, Color.argb(191, 255, 255, 255))
                     setViewVisibility(R.id.btn_mic, View.GONE)
                     setOnClickPendingIntent(R.id.tv_prompt, mainPi(context))
                 }
@@ -100,7 +103,6 @@ class VitaWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setImageViewBitmap(R.id.capsule_bg, staticAuroraBitmap(context))
                 setViewVisibility(R.id.capsule_bg, View.VISIBLE)
-                setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
                 setViewVisibility(R.id.tv_status, View.GONE)
@@ -113,7 +115,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 setViewVisibility(R.id.tv_recording_text, View.VISIBLE)
                 setTextViewText(R.id.tv_recording_text, "Подготовка…")
                 setContentDescription(R.id.tv_recording_text, context.getString(R.string.a11y_widget_preparing))
-                setFloat(R.id.tv_recording_text, "setAlpha", 0.65f)
+                setTextColor(R.id.tv_recording_text, Color.argb(166, 255, 255, 255))
                 setViewVisibility(R.id.btn_stop, View.VISIBLE)
                 setOnClickPendingIntent(R.id.btn_stop, voiceStopPi(context))
             }
@@ -142,15 +144,11 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 val display = partialText.ifBlank { "Говорите…" }
                 setTextViewText(R.id.tv_recording_text, display)
                 setContentDescription(R.id.tv_recording_text, "Запись: $display")
-                setFloat(R.id.tv_recording_text, "setAlpha", if (partialText.isBlank()) 0.50f else 0.92f)
+                val textAlpha = if (partialText.isBlank()) 128 else 235
+                setTextColor(R.id.tv_recording_text, Color.argb(textAlpha, 255, 255, 255))
                 setViewVisibility(R.id.fl_recording_submit, View.VISIBLE)
                 setOnClickPendingIntent(R.id.fl_recording_submit, voiceSubmitPi(context))
-                // Сбрасываем кольца в начальное состояние (анимация стартует сразу после)
-                for (id in intArrayOf(R.id.ring1, R.id.ring2, R.id.ring3)) {
-                    setFloat(id, "setScaleX", 0f)
-                    setFloat(id, "setScaleY", 0f)
-                    setFloat(id, "setAlpha", 0f)
-                }
+                // Кольца берут начальные значения из XML (alpha=0, scaleX=0, scaleY=0)
             }
             updateAll(context, views)
         }
@@ -177,7 +175,6 @@ class VitaWidgetProvider : AppWidgetProvider() {
             val statusViews = RemoteViews(context.packageName, R.layout.widget_vita).apply {
                 setImageViewBitmap(R.id.capsule_bg, staticAuroraBitmap(context))
                 setViewVisibility(R.id.capsule_bg, View.VISIBLE)
-                setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
                 setViewVisibility(R.id.capsule, View.VISIBLE)
                 setViewVisibility(R.id.tv_prompt, View.GONE)
                 setViewVisibility(R.id.btn_mic, View.GONE)
@@ -225,9 +222,7 @@ class VitaWidgetProvider : AppWidgetProvider() {
                 setViewVisibility(R.id.iv_status_check, View.GONE)
                 setTextViewText(R.id.tv_prompt, promptText)
                 setContentDescription(R.id.tv_prompt, promptText)
-                setFloat(R.id.tv_prompt, "setAlpha", 0.90f)
-                setFloat(R.id.capsule, "setAlpha", 1.0f)
-                setFloat(R.id.capsule_bg, "setAlpha", 1.0f)
+                setTextColor(R.id.tv_prompt, Color.argb(230, 255, 255, 255))
                 setOnClickPendingIntent(R.id.tv_prompt, textInputPi(context))
                 setOnClickPendingIntent(R.id.btn_mic, voiceStartPi(context))
             }

@@ -89,6 +89,11 @@ class MainActivity : ComponentActivity() {
 
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
+            WidgetState.getLastError(this)?.let { err ->
+                android.widget.Toast.makeText(this, "Widget error:\n$err", android.widget.Toast.LENGTH_LONG).show()
+                Timber.e("WIDGET_ERROR: %s", err)
+                WidgetState.clearError(this)
+            }
         }
 
         if (!SessionManager.hasAppToken(this)) {

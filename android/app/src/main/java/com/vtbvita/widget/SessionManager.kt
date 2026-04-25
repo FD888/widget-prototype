@@ -42,11 +42,15 @@ object SessionManager {
     // Сохраняется после выбора профиля, не зависит от app_token.
     // ------------------------------------------------------------------
 
-    fun login(context: Context, personaId: String) =
+    fun login(context: Context, personaId: String) {
         prefs(context).edit().putString(KEY_PERSONA, personaId).apply()
+        WidgetState.setLoggedIn(context, personaId)
+    }
 
-    fun logout(context: Context) =
+    fun logout(context: Context) {
         prefs(context).edit().remove(KEY_PERSONA).apply()   // app_token НЕ сбрасываем при logout
+        WidgetState.setLoggedOut(context)
+    }
 
     fun getPersonaId(context: Context): String? =
         prefs(context).getString(KEY_PERSONA, null)
