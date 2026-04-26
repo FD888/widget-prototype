@@ -20,6 +20,13 @@ from main import app
 client = TestClient(app)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def run_lifespan():
+    with client:
+        yield
+
+
+
 # ─── /health ─────────────────────────────────────────────────────────────────
 
 def test_health():
