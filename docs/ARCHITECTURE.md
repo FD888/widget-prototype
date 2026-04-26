@@ -8,7 +8,7 @@
 
 ## Текущее состояние
 
-*Последнее обновление: 2026-04-26 (DI-03: fix widget on Android 10 — RemoteViews compatibility)*
+*Последнее обновление: 2026-04-26 (DI-03: fix VoiceRecordingService ring animation for Android 10)*
 
 ### Структура репозитория
 
@@ -205,6 +205,7 @@ widget-prototype/
 | 2026-04-11 | Multi-user архитектура: PIN → user_id → banking JWT содержит user_id | 3 персоны из исследования N=97: vitya(1111)/olga(2222)/artyom(3333); каждый endpoint роутится к USERS[user_id]; баланс уменьшается динамически при подтверждении |
 | 2026-04-26 | WidgetState (plain SharedPrefs) как зеркало login-статуса для виджета | EncryptedSharedPreferences бросает исключение из BroadcastReceiver-контекста на Android 10; виджет читает только plain prefs |
 | 2026-04-26 | setFloat("setAlpha") в RemoteViews заменён на setTextColor с alpha-каналом | Android 10 запрещает вызов setAlpha(float) через рефлексию для TextView в RemoteViews; вызов роняет виджет с ActionException |
+| 2026-04-26 | Анимация колец в VoiceRecordingService: setFloat(setScaleX/Y/Alpha) → setViewVisibility + setInt("setImageAlpha") | setScaleX/setScaleY на ImageView в RemoteViews запрещены на Android 10 (ActionException); кольца анимируются visibility + alpha вместо scale |
 | 2026-04-26 | Иконки виджета: ic_cross_widget.xml, ic_arrow_widget.xml (белые копии) вместо android:tint | android:tint в RemoteViews layout не поддерживается до API 31; белый цвет задаётся напрямую в векторе |
 | 2026-04-11 | data.py — единый источник данных (single source of truth) | main.py импортирует USERS + PHONE_INDEX из data.py; inline MOCK_ACCOUNTS/MOCK_CONTACTS удалены; PHONE_INDEX глобальный по всем пользователям |
 | 2026-04-11 | /auth/biometric принимает user_id в теле запроса | Android знает выбранную персону → передаёт persona.id → сервер кодирует в JWT |

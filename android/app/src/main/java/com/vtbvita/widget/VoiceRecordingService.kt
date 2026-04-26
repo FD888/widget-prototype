@@ -8,9 +8,11 @@ import android.app.Service
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.Color
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
+import android.view.View
 import android.widget.RemoteViews
 import com.vtbvita.widget.ui.effects.AuroraRenderer
 import timber.log.Timber
@@ -312,9 +314,8 @@ class VoiceRecordingService : Service() {
                     val wobbleX =  0.14f * sin(phase * 2f * PI.toFloat() * 1.3f + i * 1.1f)
                     val wobbleY = -0.10f * sin(phase * 2f * PI.toFloat() * 0.9f + i * 0.7f)
 
-                    partial.setFloat(id, "setScaleX", (base * (1f + wobbleX)).coerceAtLeast(0f))
-                    partial.setFloat(id, "setScaleY", (base * (1f + wobbleY)).coerceAtLeast(0f))
-                    partial.setFloat(id, "setAlpha",  alpha.coerceIn(0f, 1f))
+                    partial.setViewVisibility(id, if (base > 0.05f) View.VISIBLE else View.INVISIBLE)
+                    partial.setInt(id, "setImageAlpha", (alpha.coerceIn(0f, 1f) * 255).toInt())
                 }
 
                 // ── Aurora bitmap (каждые 2 кадра ≈ 160ms, ~6fps) ───────────
@@ -347,7 +348,7 @@ class VoiceRecordingService : Service() {
         val cn  = ComponentName(this, VitaWidgetProvider::class.java)
         val partial = RemoteViews(packageName, R.layout.widget_vita).apply {
             setTextViewText(R.id.tv_recording_text, text.ifBlank { "Говорите…" })
-            setFloat(R.id.tv_recording_text, "setAlpha", if (text.isBlank()) 0.50f else 0.92f)
+            setTextColor(R.id.tv_recording_text, Color.argb(if (text.isBlank()) 128 else 235, 255, 255, 255))
         }
         awm.partiallyUpdateAppWidget(awm.getAppWidgetIds(cn), partial)
     }
